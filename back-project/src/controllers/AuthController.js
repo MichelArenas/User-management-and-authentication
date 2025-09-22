@@ -75,12 +75,18 @@ const signup = async (req, res) => {
         // Encriptar contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        const count = await prisma.users.count();
+        if (count > 0) {
+        return res.status(403).json({ message: "Registro deshabilitado. Pide a un ADMIN que te cree." });
+        }
+
         // Guardar en la base de datos
         const newUser = await prisma.users.create({
             data: {
                 email,
                 password: hashedPassword,
-                fullname
+                fullname,
+                role: "ADMIN",
             }
         });
 
@@ -117,6 +123,10 @@ const signin = async (req, res) => {
     if (!user) {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
+    //Validar si el usuario esta activado
+    if (user.isActive === false){
+      return res.status(403).json({ message: "Usuario desactivado, contacta al administrador" });
+    }
     
     // Verificar contraseña
     const passwordMatch = await bcrypt.compare(password, user.password);
@@ -147,11 +157,16 @@ const signin = async (req, res) => {
         { 
           userId: user.id,
           email: user.email,
-          fullname: user.fullname 
+          fullname: user.fullname,
+          role: user.role 
         },
         process.env.JWT_SECRET,
         { expiresIn: "24h" }
       );
+      //Validar que el usuario esté activo antes de loguear
+      if (!user?.isActive){
+        return res.status(401).json({ message: "Credenciales invalidas"})
+      }
       
       return res.status(200).json({
         message: "Autenticación exitosa",
@@ -159,7 +174,8 @@ const signin = async (req, res) => {
         user: {
           id: user.id,
           email: user.email,
-          fullname: user.fullname
+          fullname: user.fullname,
+          role: user.role
         }
       });
     } else {

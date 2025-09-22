@@ -6,5 +6,7 @@ const router = express.Router();
 router.post('/sign-up', authController.signup);
 //http://localhost:3002/api/v1/auth/sign-in
 router.post('/sign-in', authController.signin);
+//http://localhost:3002/api/v1/auth/sign-in
+//router.post('/sign-out', authController.signin);
 
 module.exports = router;

@@ -93,4 +93,76 @@ const  deactivate = async (req, res) => {
   }
 };
 
-module.exports ={createByAdmin,listAll, deactivate };
+const updatePassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    // Verificar formato de la nueva contraseña
+    const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        message: "La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número"
+      });
+    }
+
+    // Verificar que el usuario existe
+    const user = await prisma.users.findUnique({
+      where: { id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Verificar que el usuario autenticado está modificando su propia contraseña o es admin
+    if (req.user.id !== id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+
+    // Verificar contraseña actual
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ message: "La contraseña actual es incorrecta" });
+    }
+
+    // Verificar que la nueva contraseña no sea igual a la actual
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ 
+        message: "La nueva contraseña no puede ser igual a la actual" 
+      });
+    }
+
+    // Hash de la nueva contraseña
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Actualizar la contraseña
+    const updatedUser = await prisma.users.update({
+      where: { id },
+      data: { 
+        password: hashedPassword,
+        updatedAt: new Date()
+      }
+    });
+
+    res.status(200).json({ 
+      message: "Contraseña actualizada correctamente",
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        fullname: updatedUser.fullname,
+        role: updatedUser.role
+      }
+    });
+  } catch (error) {
+    console.error("Error al actualizar la contraseña:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+
+module.exports = {
+  createByAdmin,
+  listAll,
+  deactivate,
+  updatePassword
+};

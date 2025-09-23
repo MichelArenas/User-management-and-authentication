@@ -9,4 +9,7 @@ router.post('/sign-in', authController.signin);
 //http://localhost:3002/api/v1/auth/sign-in
 //router.post('/sign-out', authController.signin);
 
+router.post("/create-user", authController.createUserByAdmin);
+
+
 module.exports = router;

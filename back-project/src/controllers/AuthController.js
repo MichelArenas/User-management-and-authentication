@@ -16,6 +16,9 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+
+
+
 // Función para generar código de 6 dígitos
 const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -202,4 +205,56 @@ const signin = async (req, res) => {
   }
 };
 
-module.exports = { signup, signin, prisma };
+// Crear usuarios desde ADMIN
+const createUserByAdmin = async (req, res) => {
+  try {
+    const { email, password, fullname, role } = req.body;
+
+    if (!email || !password || !fullname || !role) {
+      return res.status(400).json({ message: "Faltan datos obligatorios" });
+    }
+
+    // Validar rol
+    const validRoles = ["PACIENTE", "MEDICO", "ENFERMERO"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: "Rol inválido" });
+    }
+
+    // Normalizar email
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existingUser = await prisma.users.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "El correo ya está registrado" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await prisma.users.create({
+      data: {
+        email: normalizedEmail,
+        password: hashedPassword,
+        fullname,
+        role
+      }
+    });
+
+    return res.status(201).json({
+      message: "Usuario creado correctamente",
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        fullname: newUser.fullname,
+        role: newUser.role
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Error en el servidor" });
+  }
+};
+
+module.exports = { signup, signin, createUserByAdmin, prisma };

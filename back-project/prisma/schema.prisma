@@ -22,12 +22,15 @@ enum Role {
 }
 
 model Users {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  email     String   @unique
-  fullname  String
-  password  String
-  role      Role
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                      String    @id @default(auto()) @map("_id") @db.ObjectId
+  email                   String    @unique
+  fullname                String
+  password                String
+  role                    Role
+  isActive                Boolean   @default(true)
+  status                  String    @default("PENDING")
+  verificationCode        String?
+  verificationCodeExpires DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 }

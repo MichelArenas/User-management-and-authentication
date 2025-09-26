@@ -16,9 +16,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-
-
 // Función para generar código de 6 dígitos
 const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();

@@ -67,11 +67,17 @@ const createByAdmin = async (req, res) => {
   }
 };
 
-const listAll =  async (_req, res) => {
-    try {
-    const users = await prisma.users.findMany({ // <- USERS
+// Listar todos los usuarios (solo ADMIN)
+const listAll = async (_req, res) => {
+  try {
+    if (_req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+
+    const users = await prisma.users.findMany({
       select: { id: true, email: true, fullname: true, role: true, isActive: true, createdAt: true }
     });
+
     return res.json(users);
   } catch (error) {
     console.error("listAll error:", error);
@@ -80,16 +86,41 @@ const listAll =  async (_req, res) => {
 };
 
 
-const  deactivate = async (req, res) => {
-    try {
-    await prisma.users.update({ // <- USERS
+// Desactivar usuario (solo ADMIN)
+const deactivate = async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+
+    await prisma.users.update({
       where: { id: req.params.id },
       data: { isActive: false }
     });
+
     return res.json({ message: "Usuario desactivado" });
   } catch (error) {
     console.error("deactivate error:", error);
     return res.status(500).json({ message: "Error desactivando usuario" });
+  }
+};
+
+// Activar usuario (solo ADMIN)
+const activate = async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+
+    await prisma.users.update({
+      where: { id: req.params.id },
+      data: { isActive: true }
+    });
+
+    return res.json({ message: "Usuario activado" });
+  } catch (error) {
+    console.error("activate error:", error);
+    return res.status(500).json({ message: "Error activando usuario" });
   }
 };
 
@@ -164,5 +195,6 @@ module.exports = {
   createByAdmin,
   listAll,
   deactivate,
+  activate,
   updatePassword
 };

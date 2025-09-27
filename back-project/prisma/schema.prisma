@@ -22,15 +22,29 @@ enum Role {
 }
 
 model Users {
-  id                      String    @id @default(auto()) @map("_id") @db.ObjectId
-  email                   String    @unique
+  id                      String        @id @default(auto()) @map("_id") @db.ObjectId
+  email                   String        @unique
   fullname                String
   password                String
   role                    Role
-  isActive                Boolean   @default(true)
-  status                  String    @default("PENDING")
+  isActive                Boolean       @default(true)
+  status                  String        @default("PENDING")
   verificationCode        String?
   verificationCodeExpires DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  activityLogs            ActivityLog[]
+}
+
+model ActivityLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  userEmail String?
+  action    String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user Users? @relation(fields: [userId], references: [id])
 }

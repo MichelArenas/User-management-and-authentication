@@ -176,6 +176,15 @@ const updatePassword = async (req, res) => {
       }
     });
 
+    // Registrar cambio de contraseña
+    await logActivity({
+      action: "CAMBIO_CONTRASEÑA",
+      userId: id,
+      userEmail: updatedUser.email,
+      details: "Usuario cambió su contraseña",
+      req
+    });
+
     res.status(200).json({ 
       message: "Contraseña actualizada correctamente",
       user: {
@@ -191,10 +200,72 @@ const updatePassword = async (req, res) => {
   }
 };
 
+// Añade esta función
+
+const getActivityLogs = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, userId, action, fromDate, toDate } = req.query;
+    
+    // Construir filtro
+    const filter = {};
+    
+    if (userId) filter.userId = userId;
+    if (action) filter.action = action;
+    
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.gte = new Date(fromDate);
+      if (toDate) filter.createdAt.lte = new Date(toDate);
+    }
+    
+    // Obtener registros
+    const logs = await prisma.activityLog.findMany({
+      where: filter,
+      orderBy: { createdAt: 'desc' },
+      skip: (parseInt(page) - 1) * parseInt(limit),
+      take: parseInt(limit),
+      include: {
+        user: {
+          select: {
+            fullname: true,
+            email: true,
+            role: true
+          }
+        }
+      }
+    });
+    
+    const totalLogs = await prisma.activityLog.count({ where: filter });
+    
+    return res.status(200).json({
+      logs,
+      pagination: {
+        total: totalLogs,
+        pages: Math.ceil(totalLogs / parseInt(limit)),
+        currentPage: parseInt(page),
+        pageSize: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error("Error al recuperar registros:", error);
+    return res.status(500).json({ message: "Error al recuperar registros" });
+  }
+};
+
+// Actualiza el module.exports
+module.exports = {
+  createByAdmin,
+  listAll,
+  deactivate,
+  updatePassword,
+  getActivityLogs // Añade esto
+};
+
 module.exports = {
   createByAdmin,
   listAll,
   deactivate,
   activate,
-  updatePassword
+  updatePassword,
+  getActivityLogs
 };

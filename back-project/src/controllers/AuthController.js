@@ -3,6 +3,7 @@ const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { generateVerificationCode, sendVerificationEmail } = require('../config/emailConfig');
+const { logActivity } = require('../config/loggerService');
 
 const verificationCodes = {};
 
@@ -127,6 +128,15 @@ const verifyEmail = async (req, res) => {
         verificationCode: null,
         verificationCodeExpires: null,
       },
+    });
+
+    //Registrar activacion de cuenta
+    await logActivity({
+      action: "CUENTA_ACTIVADA",
+      userId: updatedUser.id,
+      userEmail: updatedUser.email,
+      details: "Usuario verificó su email y activó su cuenta",
+      req
     });
 
     return res.status(200).json({
@@ -271,6 +281,15 @@ const signin = async (req, res) => {
         process.env.JWT_SECRET,
         { expiresIn: "24h" }
       );
+
+      // Registrar inicio de sesión
+      await logActivity({
+        action: "INICIO_SESION",
+        userId: user.id,
+        userEmail: user.email,
+        details: `Usuario inició sesión exitosamente con rol: ${user.role}`,
+        req
+      });
       
       return res.status(200).json({
         message: "Autenticación exitosa",
@@ -376,6 +395,15 @@ const createUserByAdmin = async (req, res) => {
       },
     });
 
+    // Registrar creación de usuario
+    await logActivity({
+      action: "USUARIO_CREADO",
+      userId: req.user.id,
+      userEmail: req.user.email,
+      details: `Administrador creó nuevo usuario: ${email} con rol: ${role}`,
+      req
+    });
+
     // Enviar email con el código de verificación
     const emailResult = await sendVerificationEmail(
       email,
@@ -413,6 +441,24 @@ const createUserByAdmin = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    // Registrar actividad de cierre de sesión
+    await logActivity({
+      action: "CIERRE_SESION",
+      userId: req.user.id,
+      userEmail: req.user.email,
+      details: "Usuario cerró sesión",
+      req
+    });
+    
+    return res.status(200).json({ message: "Cierre de sesión exitoso" });
+  } catch (error) {
+    console.error("Error en logout:", error);
+    return res.status(500).json({ message: "Error en el servidor" });
+  }
+};
+
 
 
 module.exports = { 
@@ -420,6 +466,7 @@ module.exports = {
   signin, 
   createUserByAdmin, 
   resendVerificationCode, 
-  verifyEmail, 
+  verifyEmail,
+  logout,
   prisma
 };

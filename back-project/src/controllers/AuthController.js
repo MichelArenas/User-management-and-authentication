@@ -2,7 +2,7 @@ const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { generateVerificationCode, sendVerificationEmail } = require('../config/emailConfig');
+const { generateVerificationCode, sendVerificationEmail, send2FAEmail } = require('../config/emailConfig');
 const { logActivity } = require('../config/loggerService');
 
 const verificationCodes = {};
@@ -311,8 +311,8 @@ const signin = async (req, res) => {
         timestamp: new Date()
       };
       
-      // Enviar email con el código
-      await sendVerificationEmail(email, user.fullname, code);
+      // Enviar email con el código de 2FA
+      await send2FAEmail(email, user.fullname, code);
       
       return res.status(200).json({
         message: "Código de verificación enviado al email",

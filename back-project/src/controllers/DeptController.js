@@ -3,10 +3,13 @@ const prisma = new PrismaClient();
 
 const createDepartment = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    let { name, description } = req.body;
     if (!name) {
         return res.status(400).json({ message: "El nombre del departamento es obligatorio" });
     }
+
+      name = name.toUpperCase().trim();
+
     // Verificar si el departamento ya existe
     const depExists = await prisma.departments.findUnique({
         where: { name: name }

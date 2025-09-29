@@ -43,8 +43,8 @@ const createSpecialty = async (req, res) => {
 const listSpecialties = async (_req, res) => {
   try {
     const listSpecialtie = await prisma.specialties.findMany({
-      include: { 
-        departament: {
+      include: {
+        department: {
           select: { 
             id: true, 
             name: true 

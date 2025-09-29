@@ -17,6 +17,9 @@ const permissions={
         'specialty:list',
         'specialty:update',
         'specialty:delete', 
+        'affiliation:create',   // crear afiliaciones
+        'affiliation:list',     // listar afiliaciones
+        'affiliation:delete',   // eliminar afiliaciones
     ],
     MEDICO: [
         'patient:view:assigned',     // ver pacientes de su departamento/especialidad
@@ -26,6 +29,8 @@ const permissions={
         'patient:create:record',     // crear registros clínicos
         'appointment:view:assigned', // ver citas de sus pacientes
         'appointment:update:status', // cambiar estado de cita (atendido, cancelado)
+        'department:list',            // ver lista de departamentos
+        'specialty:list',            // ver lista de especialidades
     ],
 
     ENFERMERO:[
@@ -34,6 +39,8 @@ const permissions={
         'patient:update:care-notes',     // notas de enfermería
         'appointment:view:assigned',     // ver citas relacionadas
         'medication:administer',         // registrar administración de medicamentos
+        'department:list',            // ver lista de departamentos
+        'specialty:list',            // ver lista de especialidades
     ],
     PACIENTE:[
         'patient:view:self',          // ver su propio perfil clínico

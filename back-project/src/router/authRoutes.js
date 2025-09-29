@@ -16,9 +16,6 @@ router.post('/verify-email', authController.verifyEmail);
 //http://localhost:3002/api/v1/auth/resend-verification
 router.post('/resend-verification', authController.resendVerificationCode);
 
-//http://localhost:3002/api/v1/auth/create-user
-router.post("/create-user", verifyJWT, requireRole('ADMIN'), authController.createUserByAdmin);
-
 //http://localhost:3002/api/v1/auth/logout
 router.post('/logout', verifyJWT, authController.logout);
 

@@ -22,18 +22,19 @@ enum Role {
 }
 
 model Users {
-  id                      String        @id @default(auto()) @map("_id") @db.ObjectId
-  email                   String        @unique
+  id                      String          @id @default(auto()) @map("_id") @db.ObjectId
+  email                   String          @unique
   fullname                String
   password                String
   role                    Role
-  isActive                Boolean       @default(true)
-  status                  String        @default("PENDING")
+  isActive                Boolean         @default(true)
+  status                  String          @default("PENDING")
   verificationCode        String?
   verificationCodeExpires DateTime?
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
   activityLogs            ActivityLog[]
+  userDeptRoles           UserDeptRoles[] @relation("UserToAffiliations")
 }
 
 model ActivityLog {
@@ -44,40 +45,40 @@ model ActivityLog {
   details   String?
   ipAddress String?
   userAgent String?
-  email     String   @unique
-  fullname  String
-  password  String
-  role      Role
-  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user Users? @relation(fields: [userId], references: [id])
+  user      Users?   @relation(fields: [userId], references: [id])
 }
 
 model Departments {
-  id          String        @id @default(auto()) @map("_id") @db.ObjectId
-  name        String        @unique
-  specialties Specialties[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  name         String          @unique
+  specialties  Specialties[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  affiliations UserDeptRoles[] @relation("DepartmentToAffiliations")
 }
 
 model Specialties {
-  id           String      @id @default(auto()) @map("_id") @db.ObjectId
-  name         String      @unique
-  departmentId String      @db.ObjectId
-  departament  Departments @relation(fields: [departmentId], references: [id])
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  name         String          @unique
+  departmentId String          @db.ObjectId
+  department   Departments     @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  affiliations UserDeptRoles[] @relation("SpecialtyToAffiliations")
 }
 
 // vínculo Usuario–Departamento–Rol (permite RBAC por ámbito)
 model UserDeptRoles {
-  id           String  @id @default(auto()) @map("_id") @db.ObjectId
-  userId       String  @db.ObjectId
-  departmentId String  @db.ObjectId
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String       @db.ObjectId
+  departmentId String       @db.ObjectId
   role         Role
-  specialtyId  String? @db.ObjectId
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  specialtyId  String?      @db.ObjectId
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  user         Users        @relation("UserToAffiliations", fields: [userId], references: [id])
+  department   Departments  @relation("DepartmentToAffiliations", fields: [departmentId], references: [id])
+  specialty    Specialties? @relation("SpecialtyToAffiliations", fields: [specialtyId], references: [id])
 }

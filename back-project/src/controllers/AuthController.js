@@ -75,18 +75,13 @@ const signup = async (req, res) => {
         // Encriptar contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const count = await prisma.users.count();
-        if (count > 0) {
-        return res.status(403).json({ message: "Registro deshabilitado. Pide a un ADMIN que te cree." });
-        }
-
         // Guardar en la base de datos
         const newUser = await prisma.users.create({
             data: {
                 email,
                 password: hashedPassword,
                 fullname,
-                role: "ADMIN",
+                role: "ADMINISTRADOR",
             }
         });
 

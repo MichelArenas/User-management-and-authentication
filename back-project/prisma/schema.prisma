@@ -15,7 +15,7 @@ datasource db {
 }
 
 enum Role {
-  ADMIN
+  ADMINISTRADOR
   MEDICO
   ENFERMERO
   PACIENTE
@@ -27,7 +27,36 @@ model Users {
   fullname  String
   password  String
   role      Role
-  isActive Boolean @default(true)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Departments {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  name        String        @unique
+  specialties Specialties[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Specialties {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  name         String      @unique
+  departmentId String      @db.ObjectId
+  departament  Departments @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+// vínculo Usuario–Departamento–Rol (permite RBAC por ámbito)
+model UserDeptRoles {
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String  @db.ObjectId
+  departmentId String  @db.ObjectId
+  role         Role
+  specialtyId  String? @db.ObjectId
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

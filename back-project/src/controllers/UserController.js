@@ -2,7 +2,7 @@ const {PrismaClient} = require ("../generated/prisma");
 const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 
-const VALID_ROLES = ["ADMIN", "MEDICO", "ENFERMERO", "PACIENTE"];
+const VALID_ROLES = ["ADMINISTRADOR", "MEDICO", "ENFERMERO", "PACIENTE"];
 
 const createByAdmin = async (req, res) => {
   try {

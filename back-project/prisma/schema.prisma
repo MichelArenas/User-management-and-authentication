@@ -22,7 +22,28 @@ enum Role {
 }
 
 model Users {
+  id                      String        @id @default(auto()) @map("_id") @db.ObjectId
+  email                   String        @unique
+  fullname                String
+  password                String
+  role                    Role
+  isActive                Boolean       @default(true)
+  status                  String        @default("PENDING")
+  verificationCode        String?
+  verificationCodeExpires DateTime?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  activityLogs            ActivityLog[]
+}
+
+model ActivityLog {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  userEmail String?
+  action    String
+  details   String?
+  ipAddress String?
+  userAgent String?
   email     String   @unique
   fullname  String
   password  String
@@ -30,6 +51,7 @@ model Users {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user Users? @relation(fields: [userId], references: [id])
 }
 
 model Departments {
@@ -56,7 +78,6 @@ model UserDeptRoles {
   departmentId String  @db.ObjectId
   role         Role
   specialtyId  String? @db.ObjectId
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

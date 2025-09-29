@@ -230,6 +230,12 @@ const signin = async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
+    // Verificar contraseña
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Credenciales inválidas" });
+    }
+
     // Verificar si la cuenta está activa
     if (user.status !== "ACTIVE") {
       return res.status(403).json({ 
@@ -244,12 +250,6 @@ const signin = async (req, res) => {
       return res.status(403).json({
         message: "Tu cuenta está deshabilitada por el administrador. Contacta con soporte."
       });
-    }
-
-    // Verificar contraseña
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ message: "Credenciales inválidas" });
     }
     
     // Si el usuario proporciona un código de verificación, validar 2FA

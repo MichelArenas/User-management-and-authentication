@@ -16,6 +16,11 @@ app.use(cors({
   credentials: true,               // si usas cookies o auth headers
 }));
 
+app.get("/health", (_req, res) =>
+  res.json({ ok: true, ts: new Date().toISOString() })
+);
+
+
 app.use(bodyparser.json());
 app.use('/api/v1', routes);
 

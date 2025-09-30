@@ -12,7 +12,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 //http://localhost:3002/api/v1/users
 router.post('/', verifyJWT, permission('user:create'), Users.createByAdmin); 
 //http://localhost:3002/api/v1/users
-router.get('/', verifyJWT, permission('user:list'), Users.listAll);
+router.get('/', verifyJWT, permission('user:list'), Users.getAllUsers);
+//http://localhost:3002/api/v1/users/IdObject
+router.get('/:id', Users.getUserById);
+
 //http://localhost:3002/api/v1/users/IdObject/deactivate 
 router.patch('/:id/deactivate', verifyJWT, permission('user:deactivate'), Users.deactivate);
 

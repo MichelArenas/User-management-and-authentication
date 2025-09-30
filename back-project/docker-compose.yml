@@ -1,0 +1,25 @@
+
+services:
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      args: 
+        BUILDPLATFORM: linux/amd64
+    image: back-project-app:latest
+    env_file: .env 
+    ports:
+      - "3002:3002"
+    environment:
+      - node_env=production
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - .:/app
+      - /app/node_modules

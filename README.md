@@ -1,5 +1,13 @@
 ## Instalación
 
+## Requisitos
+- Docker Desktop (Windows/Mac) o Docker Engine (Linux)
+- Node 18+ (solo si vas a desarrollar fuera de Docker)
+
+# Archivos importantes
+- `Dockerfile`: cómo construir la imagen
+- `docker-compose.yml`: orquesta app + Mongo
+
 1. **Clonar el repositorio**
    ```
    git clone https://github.com/MichelArenas/User-management-and-authentication.git

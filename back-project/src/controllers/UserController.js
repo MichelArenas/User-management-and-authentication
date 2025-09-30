@@ -1,6 +1,6 @@
 const {PrismaClient} = require ("../generated/prisma");
 const prisma = new PrismaClient();
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { generateVerificationCode, sendVerificationEmail} = require('../config/emailConfig');
 const { logActivity } = require('../config/loggerService');
 const { error } = require("console");
@@ -122,7 +122,7 @@ const createByAdmin = async (req, res) => {
 };
 
 // Listar todos los usuarios
-const listAll = async (_req, res) => {
+const getAllUsers = async (_req, res) => {
   try {
     if (_req.user.role !== "ADMINISTRADOR") {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
@@ -139,6 +139,20 @@ const listAll = async (_req, res) => {
   }
 };
 
+// buscar 1 usuario
+const getUserById = async (req, res) => {
+  try {
+    const user = await prisma.users.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true, createdAt: true }
+    });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (e) {
+    console.error("[PUBLIC] get user error:", e);
+    res.status(500).json({ message: "Error consultando usuario" });
+  }
+};
 
 // Desactivar usuario
 const deactivate = async (req, res) => {
@@ -438,7 +452,8 @@ const bulkImport = async (req, res) => {
 
 module.exports = {
   createByAdmin,
-  listAll,
+  getAllUsers,
+  getUserById,
   deactivate,
   activate,
   updatePassword,

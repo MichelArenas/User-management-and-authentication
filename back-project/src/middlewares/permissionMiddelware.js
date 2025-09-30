@@ -41,7 +41,7 @@ module.exports = (permissionKey, opts = {}) => {
           return res.status(403).json({ message: 'No tienes acceso a esta especialidad' });
         }
       }
-
+      console.log('[PERM] allowed?', allowed.includes(permissionKey), 'allowed-list:', allowed);
       next();
     } catch (err) {
       console.error('requirePermission error:', err);

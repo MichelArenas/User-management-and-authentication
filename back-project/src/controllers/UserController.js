@@ -3,191 +3,15 @@ const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 const { generateVerificationCode, sendVerificationEmail} = require('../config/emailConfig');
 const { logActivity } = require('../config/loggerService');
-const {parse} = require("csv-parse/sync");
-const crypto = require("crypto");
 const { error } = require("console");
+const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 
+const {  VALID_ROLES,
+  isEmailValid,
+  isPasswordStrong,
+  generateTempPassword
+} = require("../utils/userUtils");
 
-const VALID_ROLES = ["ADMINISTRADOR", "MEDICO", "ENFERMERO", "PACIENTE"];
-
-
-function normalizeRole(v) {
-  if (!v) return null;
-  const up = String(v).trim().toUpperCase();
-  return VALID_ROLES.includes(up) ? up : null;
-}
-function normalizeStatus(v) {
-  if (!v) return "PENDING";
-  const up = String(v).trim().toUpperCase();
-}
-function isEmailValid(email) {
-  const emailRegex = /^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/;
-  return emailRegex.test(email);
-}
-function isPasswordStrong(pw) {
-  return /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(pw);
-}
-function generateTempPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  return Array.from(crypto.randomFillSync(new Uint32Array(12)))
-    .map(n => alphabet[n % alphabet.length]).join("");
-}
-
-function cleanToken(t) {
-  if (t === null || t === undefined) return t;
-  return String(t)
-    .replace(/\uFEFF/g, "")     // BOM
-    .trim()
-    .replace(/^"+|"+$/g, "") 
-    .replace(/^'+|'+$/g, "");   
-}
-function normalizeRowKeys(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    // quita BOM, recorta, minúscula, espacios -> _
-    const key = cleanToken(k).toLowerCase().replace(/\s+/g, "_");
-    out[key] = typeof v === "string" ? cleanToken(v) : v;
-  }
-  return out;
-}
-
-function stripEnclosingQuotesPerLine(text) {
-  return text
-    .split(/\r?\n/)
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return ""; // conserva filas vacías
-      // si empieza y termina con comillas dobles, quitarlas
-      if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-        const inner = trimmed.slice(1, -1);
-        // CSV duplica comillas internas como "" -> conviértelas a "
-        return inner.replace(/""/g, '"');
-      }
-      // también soporta comilla simple, por si acaso
-      if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-        const inner = trimmed.slice(1, -1);
-        return inner.replace(/''/g, "'");
-      }
-      return line; 
-    })
-    .join("\n");
-}
-
-// 🔧 NUEVO: logger bonito del delimitador
-function labelDelim(d) {
-  if (d === "\t") return "\\t";
-  if (d === ",") return ",";
-  if (d === ";") return ";";
-  if (d === "|") return "|";
-  return d;
-}
-
-// 🔧 NUEVO: intenta parsear con un set de opciones
-function tryParse(bufferOrString, { delimiter, quote }) {
-  const input = typeof bufferOrString === "string" ? bufferOrString : bufferOrString;
-  const opts = {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    bom: true,
-    delimiter,
-  };
-  if (quote !== undefined) opts.quote = quote; // quote:false desactiva comillas
-  return parse(input, opts);
-}
-
-// 🔧 REEMPLAZA parseCsvRobustVerbose por esta versión
-function parseCsvRobustVerbose(buffer) {
-  const delims = [",", ";", "\t", "|"];
-
-  // Log de los primeros bytes (vemos comillas al inicio)
-  try {
-    const head = buffer.slice(0, 120).toString("utf8");
-    console.log(`[CSV] Head bytes: ${JSON.stringify(head)}`);
-  } catch (e) {
-    console.log("[CSV] No se pudo imprimir head bytes:", e.message);
-  }
-
-  // 1) Intento normal (quote default: ")
-  for (const d of delims) {
-    try {
-      const tmp = tryParse(buffer, { delimiter: d });
-      const keys = Object.keys(tmp[0] || {});
-      console.log(`[CSV] Probe delim "${labelDelim(d)}" -> rows=${tmp.length}, keys=${keys.length} :: ${keys.join("|")}`);
-      if (tmp.length > 0 && keys.length >= 2) {
-        console.log(`[CSV] ✅ Elegido delimitador: "${labelDelim(d)}" con ${keys.length} columnas`);
-        const norm = tmp.map(normalizeRowKeys);
-        console.log(`[CSV] Muestra fila #1:`, {
-          ...norm[0],
-          password: norm[0]?.password ? "***" : undefined,
-          current_password: norm[0]?.current_password ? "***" : undefined,
-        });
-        console.log(`[CSV] Muestra fila #2:`, norm[1] ? {
-          ...norm[1],
-          password: norm[1]?.password ? "***" : undefined,
-          current_password: norm[1]?.current_password ? "***" : undefined,
-        } : null);
-        return norm;
-      }
-    } catch (e) {
-      console.log(`[CSV] ❌ Falló delim "${labelDelim(d)}": ${e.message}`);
-    }
-  }
-
-  // 2) Reintento con quote desactivado (quote:false) — trata comillas como caracteres normales
-  console.log("[CSV] Reintento con quote:false (tratar comillas como texto)...");
-  for (const d of delims) {
-    try {
-      const tmp = tryParse(buffer, { delimiter: d, quote: false });
-      const keys = Object.keys(tmp[0] || {});
-      console.log(`[CSV][q=false] Probe delim "${labelDelim(d)}" -> rows=${tmp.length}, keys=${keys.length} :: ${keys.join("|")}`);
-      if (tmp.length > 0 && keys.length >= 2) {
-        console.log(`[CSV][q=false] ✅ Elegido delimitador: "${labelDelim(d)}" con ${keys.length} columnas`);
-        const norm = tmp.map(normalizeRowKeys);
-        console.log(`[CSV][q=false] Muestra fila #1:`, {
-          ...norm[0],
-          password: norm[0]?.password ? "***" : undefined,
-          current_password: norm[0]?.current_password ? "***" : undefined,
-        });
-        console.log(`[CSV][q=false] Muestra fila #2:`, norm[1] ? {
-          ...norm[1],
-          password: norm[1]?.password ? "***" : undefined,
-          current_password: norm[1]?.current_password ? "***" : undefined,
-        } : null);
-        return norm;
-      }
-    } catch (e) {
-      console.log(`[CSV][q=false] ❌ Falló delim "${labelDelim(d)}": ${e.message}`);
-    }
-  }
-
-  // 3) Fallback: quitar comillas que envuelven toda la línea y reintentar (normal y quote:false)
-  console.log("[CSV] Fallback: quitando comillas envolventes por línea y reintentando parseo...");
-  const cleaned = stripEnclosingQuotesPerLine(buffer.toString("utf8"));
-
-  for (const d of delims) {
-    try {
-      const tmp = tryParse(cleaned, { delimiter: d });
-      const keys = Object.keys(tmp[0] || {});
-      console.log(`[CSV][CLEAN] Probe delim "${labelDelim(d)}" -> rows=${tmp.length}, keys=${keys.length} :: ${keys.join("|")}`);
-      if (tmp.length > 0 && keys.length >= 2) {
-        console.log(`[CSV][CLEAN] ✅ Elegido delimitador: "${labelDelim(d)}" con ${keys.length} columnas`);
-        const norm = tmp.map(normalizeRowKeys);
-        console.log(`[CSV][CLEAN] Muestra fila #1:`, {
-          ...norm[0],
-          password: norm[0]?.password ? "***" : undefined,
-          current_password: norm[0]?.current_password ? "***" : undefined,
-        });
-        return norm;
-      }
-    } catch (e) {
-      console.log(`[CSV][CLEAN] ❌ Falló delim "${labelDelim(d)}": ${e.message}`);
-    }
-  }
-
-  console.log("[CSV] Ningún intento produjo >=2 columnas. CSV mal formado o con formato no estándar.");
-  return [];
-}
 
 
 const createByAdmin = async (req, res) => {
@@ -482,65 +306,11 @@ const bulkImport = async (req, res) => {
     console.log(`[IMPORT] Archivo recibido: ${req.file.originalname} (${req.file.mimetype}) size=${req.file.size}`);
 
     //Parsear CSV robusto
-    const records = parseCsvRobustVerbose(req.file.buffer);
+    const { records, toInsert, errors, duplicatesCSV } = prepareBulkUsersFromCsv(req.file.buffer);
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ message: "El archivo CSV está vacío o no tiene el formato correcto" });
     }
     console.log(`[IMPORT] Registros leídos: ${records.length}`);
-
-    //Validación por filas
-    const seenEmails = new Set();
-    const toInsert = [];
-    const errors = [];
-    const duplicatesCSV = [];
-
-    for (let i = 0; i < records.length; i++) {
-      const row = records[i];
-      const rowNum = i + 2; // cabecera + base-1
-
-      // Log de claves detectadas por fila (solo primeras 3 filas para no saturar)
-      if (i < 3) console.log(`[ROW ${rowNum}] keys: ${Object.keys(row).join(", ")}`);
-
-      const email = cleanToken((row.email || "").toString()).toLowerCase().trim();
-      const fullname = cleanToken((row.fullname || "").toString()).trim();
-      const role = normalizeRole(row.role);
-      const status = normalizeStatus(row.status);
-      let passwordPlain = cleanToken((row.current_password || row.password || "").toString());
-
-      if (!email || !isEmailValid(email)) {
-        errors.push({ row: rowNum, email: row.email, error: "email faltante o invalido" });
-        console.log(`[ROW ${rowNum}] email inválido. Valor crudo=`, row.email);
-        continue;
-      }
-      if (!fullname) {
-        errors.push({ row: rowNum, email, error: "fullname faltante" });
-        console.log(`[ROW ${rowNum}] fullname faltante`);
-        continue;
-      }
-      if (!role) {
-        errors.push({ row: rowNum, email, error: `role faltante o invalido: ${VALID_ROLES.join(", ")}` });
-        console.log(`[ROW ${rowNum}] role inválido. Valor crudo=`, row.role);
-        continue;
-      }
-      if (seenEmails.has(email)) {
-        duplicatesCSV.push({ row: rowNum, email, error: "Email duplicado en el CSV" });
-        console.log(`[ROW ${rowNum}] duplicado dentro del CSV: ${email}`);
-        continue;
-      }
-      seenEmails.add(email);
-
-      if (passwordPlain) {
-        if (!isPasswordStrong(passwordPlain)) {
-          errors.push({ row: rowNum, email, error: "password no cumple requisitos de seguridad" });
-          continue;
-        }
-      } else {
-        passwordPlain = generateTempPassword();
-      }
-
-      toInsert.push({ email, fullname, role, status, passwordPlain });
-    }
-
     console.log(`[VALIDATION] A insertar: ${toInsert.length}, errores: ${errors.length}, dupCSV: ${duplicatesCSV.length}`);
 
     //Duplicados en BD
@@ -559,7 +329,7 @@ const bulkImport = async (req, res) => {
     });
     console.log(`[DUPLICATES] dupBD: ${duplicatesDB.length}, finalBatch: ${finalBatch.length}`);
 
-    // 5) Insertar
+    //Insertar
     const inserted = [];
     for (const userData of finalBatch) {
       try {

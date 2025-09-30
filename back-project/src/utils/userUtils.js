@@ -12,8 +12,7 @@ function normalizeRole(v) {
 }
 
 function normalizeStatus(v) {
-  if (!v) return "PENDING";
-  const up = String(v).trim().toUpperCase();
+  const up = String(v || "PENDING").trim().toUpperCase();
   return VALID_STATUS.includes(up) ? up : "PENDING";
 }
 

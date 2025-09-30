@@ -9,10 +9,18 @@ const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 const {  VALID_ROLES,
   isEmailValid,
   isPasswordStrong,
-  generateTempPassword
 } = require("../utils/userUtils");
 
-
+function buildBulkVerification(status) {
+  const st = String(status || "PENDING").toUpperCase();
+  if (st !== "PENDING") {
+    return { verificationCode: null, verificationCodeExpires: null };
+  }
+  const verificationCode = generateVerificationCode();
+  const expires = new Date();
+  expires.setMinutes(expires.getMinutes() + 60); // 60 minutos de validez
+  return { verificationCode, verificationCodeExpires: expires };
+}
 
 const createByAdmin = async (req, res) => {
   try {
@@ -331,28 +339,75 @@ const bulkImport = async (req, res) => {
 
     //Insertar
     const inserted = [];
+    const toEmail = [];
+
     for (const userData of finalBatch) {
-      try {
+      try{
         const hashed = await bcrypt.hash(userData.passwordPlain, 10);
+
+        //fallback por si normalizeStatus devuelve indefinido
+        const effectiveStatus = (userData.status || "PENDING").toUpperCase();
+
+        //Generar verificación si el estado es PENDING
+        const { verificationCode, verificationCodeExpires } = buildBulkVerification(effectiveStatus);
+
         const newUser = await prisma.users.create({
           data: {
             email: userData.email,
             fullname: userData.fullname,
             role: userData.role,
-            status: userData.status,
+            status: effectiveStatus,
             isActive: true,
-            password: hashed
+            password: hashed,
+            ...(effectiveStatus === "PENDING" && verificationCode?{
+              verificationCode,
+              verificationCodeExpires
+            }:{}),
           },
           select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true }
         });
         inserted.push(newUser);
-      } catch (e) {
+        //Enviar email si el estado es PENDING
+        if(newUser.status === "PENDING" && verificationCode){
+          toEmail.push({ email: newUser.email, fullname: newUser.fullname, code: verificationCode });
+        }
+      }catch (e) {
         console.error("[INSERT] Error al insertar usuario:", userData.email, e.message);
         errors.push({ email: userData.email, error: "Error al insertar usuario en BD", detail: e?.message });
       }
     }
     console.log(`[INSERT] Insertados OK: ${inserted.length}`);
 
+    //Enviar emails
+    // Enviar emails (al final, en lote)
+    let emailsOk = 0;
+    let emailsFail = 0;
+
+    if (toEmail.length) {
+      const results = await Promise.allSettled(
+        toEmail.map(({ email, fullname, code }) =>
+          sendVerificationEmail(email, fullname, code)
+        )
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          const v = r.value;
+          const success =
+            v?.success === true ||                                 // tu servicio ya normaliza
+            (typeof v === "string" && v.startsWith("250 ")) ||     // string SMTP
+            (v?.response && v.response.startsWith("250 ")) ||      // Nodemailer: info.response
+            (Array.isArray(v?.accepted) && v.accepted.length > 0); // Nodemailer: info.accepted
+
+          success ? emailsOk++ : emailsFail++;
+        } else {
+          emailsFail++;
+        }
+      }
+      console.log(`[EMAILS] Enviados OK: ${emailsOk}, Fallidos: ${emailsFail}`);
+    }
+
+      
     //Log de actividad
     try {
       await logActivity({

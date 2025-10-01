@@ -54,23 +54,7 @@ describe('Pruebas críticas de UserDeptRoles (afiliaciones)', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  /** ---------- CREACIÓN CORRECTA ---------- */
- /* test('Debe crear afiliación PACIENTE', async () => {
-    mockPrisma.users.findUnique.mockResolvedValue({ id: 'u1' });
-    mockPrisma.userDeptRoles.findFirst.mockResolvedValue(null);
-    mockPrisma.departments.findUnique.mockResolvedValue({ id: 'd1', name: 'DEP1' });
-    mockPrisma.userDeptRoles.create.mockResolvedValue({ id: 'a1', userId: 'u1', role: 'PACIENTE', departmentId: 'd1', specialtyId: null });
-
-    const res = await request(app).post('/api/v1/affiliations').send({
-      userId: 'u1',
-      departmentId: 'd1',
-      role: 'PACIENTE'
-    });
-
-    expect(res.statusCode).toBe(201);
-    expect(res.body.role).toBe('PACIENTE');
-  });*/
-
+ 
   /** ---------- ERRORES DE CONSISTENCIA ---------- */
   test('Debe rechazar si el usuario no existe', async () => {
     mockPrisma.users.findUnique.mockResolvedValue(null);
@@ -97,35 +81,7 @@ describe('Pruebas críticas de UserDeptRoles (afiliaciones)', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  /*test('Debe rechazar si la especialidad no pertenece al departamento', async () => {
-    mockPrisma.users.findUnique.mockResolvedValue({ id: 'u1' });
-    mockPrisma.departments.findUnique.mockResolvedValue({ id: 'dep1' });
-    mockPrisma.specialties.findUnique.mockResolvedValue({ id: 'esp1', departmentId: 'dep2' });
-    mockPrisma.userDeptRoles.findFirst.mockResolvedValue(null);
-
-    const res = await request(app).post('/api/v1/affiliations').send({
-      userId: 'u1',
-      role: 'MEDICO',
-      departmentId: 'dep1',
-      specialtyId: 'esp1'
-    });
-
-    expect(res.statusCode).toBe(400);
-  });*/
-
-  /*test('Debe rechazar afiliación duplicada', async () => {
-    mockPrisma.users.findUnique.mockResolvedValue({ id: 'u1' });
-    mockPrisma.userDeptRoles.findFirst.mockResolvedValue({ id: 'dup' });
-
-    const res = await request(app).post('/api/v1/affiliations').send({
-      userId: 'u1',
-      role: 'PACIENTE',
-      departmentId: 'd1'
-    });
-
-    expect(res.statusCode).toBe(409);
-  });*/
-
+ 
   /** ---------- ERRORES INTERNOS ---------- */
   test('Debe devolver 500 en error de BD', async () => {
     mockPrisma.users.findUnique.mockRejectedValue(new Error('DB error'));

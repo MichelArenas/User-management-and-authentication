@@ -12,18 +12,23 @@ const mockPrisma = {
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    delete: jest.fn()
+    delete: jest.fn(),
+  },
+  userDeptRoles:{
+    findMany: jest.fn()
   }
 };
-
-jest.mock('../src/config/emailConfig', () => ({
-  sendVerificationEmail: jest.fn().mockResolvedValue({ success: true }),
-  generateVerificationCode: () => '123456'
-}));
 
 // Mock del módulo Prisma
 jest.mock('../src/generated/prisma', () => ({
   PrismaClient: jest.fn(() => mockPrisma)
+}));
+
+// Mock email (incluye 2FA)
+jest.mock('../src/config/emailConfig', () => ({
+  sendVerificationEmail: jest.fn().mockResolvedValue({ success: true }),
+  send2FAEmail: jest.fn().mockResolvedValue({ success: true }),
+  generateVerificationCode: jest.fn(() => '123456'),
 }));
 
 // Importar controller
@@ -48,7 +53,10 @@ function generateTestToken(user) {
 }
 
 describe('AuthController', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.userDeptRoles.findMany.mockResolvedValue([]);
+  });
 
   /** ---------- SIGNUP TESTS ---------- */
   test('Signup falla si la contraseña es débil', async () => {

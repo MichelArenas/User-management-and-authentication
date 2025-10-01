@@ -10,8 +10,12 @@ const mockPrisma = {
     findUnique: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
-    create: jest.fn()
-  }
+    create: jest.fn(),
+    delete: jest.fn(),
+  },
+  activityLog: {
+    create: jest.fn().mockResolvedValue({ id: 'log1' }),
+  },
 };
 
 // Mock del módulo Prisma
@@ -19,8 +23,18 @@ jest.mock('../src/generated/prisma', () => ({
   PrismaClient: jest.fn(() => mockPrisma)
 }));
 
+jest.mock('../src/config/emailConfig', () => ({
+  sendVerificationEmail: jest.fn().mockResolvedValue({ success: true }),
+  sendActivationEmail: jest.fn().mockResolvedValue({ success: true }),
+  generateVerificationCode: jest.fn(() => '123456'),
+}));
+
+jest.mock('../src/config/loggerService', () => ({
+  logActivity: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Importar controller
-const { createByAdmin, listAll, deactivate, activate, updatePassword } = require('../src/controllers/UserController');
+const { createByAdmin, getAllUsers, deactivate, activate, updatePassword } = require('../src/controllers/UserController');
 
 const app = express();
 app.use(express.json());
@@ -34,7 +48,7 @@ app.use((req, res, next) => {
 
 // Rutas
 app.post('/api/v1/users', createByAdmin);
-app.get('/api/v1/users', listAll);
+app.get('/api/v1/users', getAllUsers);
 app.patch('/api/v1/users/:id/deactivate', deactivate);
 app.patch('/api/v1/users/:id/activate', activate);
 app.patch('/api/v1/users/:id/password', updatePassword);
@@ -63,7 +77,7 @@ describe('UsersController Extended Tests', () => {
   });*/
 
   test('ADMIN puede crear usuario', async () => {
-    const mockAdmin = { id: 'admin1', role: 'ADMIN' };
+    const mockAdmin = { id: 'admin1', role: 'ADMINISTRADOR' };
     mockPrisma.users.create.mockResolvedValue({
       id: 'user2',
       email: 'x@x.com',
@@ -91,7 +105,7 @@ describe('UsersController Extended Tests', () => {
   });
 
   test('ADMIN puede desactivar usuario', async () => {
-    const mockAdmin = { id: 'admin1', role: 'ADMIN' };
+    const mockAdmin = { id: 'admin1', role: 'ADMINISTRADOR' };
     mockPrisma.users.update.mockResolvedValue({ id: 'user2', isActive: false });
 
     const res = await request(app)
@@ -103,7 +117,7 @@ describe('UsersController Extended Tests', () => {
   });
 
   test('ADMIN puede listar usuarios', async () => {
-    const mockAdmin = { id: 'admin1', role: 'ADMIN' };
+    const mockAdmin = { id: 'admin1', role: 'ADMINISTRADOR' };
     mockPrisma.users.findMany.mockResolvedValue([{ id: 'user1', email: 'u@e.com', role: 'PACIENTE' }]);
 
     const res = await request(app)
@@ -156,7 +170,7 @@ describe('UsersController Extended Tests', () => {
       role: 'PACIENTE'
     });
 
-    const mockAdmin = { id: 'admin1', role: 'ADMIN' };
+    const mockAdmin = { id: 'admin1', role: 'ADMINISTRADOR' };
 
     const res = await request(app)
       .patch('/api/v1/users/user2/password')

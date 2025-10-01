@@ -61,7 +61,7 @@ const signup = async (req, res) => {
 
         const emailResult = await sendVerificationEmail(email, fullname, verificationCode);
         if (!emailResult.success) {
-          await prisma.users.delete({ where: { id: newUser.id } });
+          await prisma.user.delete({ where: { id: newUser.id } });
           return res.status(500).json({ message: "Error al enviar el correo de verificación" });
         }
 

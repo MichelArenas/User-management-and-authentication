@@ -49,7 +49,7 @@ describe('Middleware de Autenticación - Pruebas de Seguridad y Manejo de Sesió
     });
 
     test('debe aceptar un token válido con formato Bearer', () => {
-      const mockPayload = { userId: '123', role: 'ADMIN', email: 'admin@test.com' };
+      const mockPayload = { userId: '123', role: 'ADMINISTRADOR', email: 'admin@test.com' };
       req.headers.authorization = 'Bearer valid-jwt-token';
       jwt.verify.mockReturnValue(mockPayload);
 
@@ -80,12 +80,12 @@ describe('Middleware de Autenticación - Pruebas de Seguridad y Manejo de Sesió
     });
 
     test('debe manejar un token con rol ADMIN', () => {
-      const mockPayload = { userId: '1', role: 'ADMIN', email: 'admin@test.com' };
+      const mockPayload = { userId: '1', role: 'ADMINISTRADOR', email: 'admin@test.com' };
       req.headers.authorization = 'Bearer admin-token';
       jwt.verify.mockReturnValue(mockPayload);
 
       authMiddleware(req, res, next);
-      expect(req.user.role).toBe('ADMIN');
+      expect(req.user.role).toBe('ADMINISTRADOR');
     });
 
     test('debe manejar un token con rol MEDICO', () => {

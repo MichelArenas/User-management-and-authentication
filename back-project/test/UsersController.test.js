@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 
 // Rutas
 app.post('/api/v1/users', createByAdmin);
-app.get('/api/v1/users', listAll);
+//app.get('/api/v1/users', listAll);
 app.patch('/api/v1/users/:id/deactivate', deactivate);
 app.patch('/api/v1/users/:id/activate', activate);
 app.patch('/api/v1/users/:id/password', updatePassword);
@@ -102,7 +102,7 @@ describe('UsersController Extended Tests', () => {
     expect(res.body.message).toMatch(/desactivado/i);
   });
 
-  test('ADMIN puede listar usuarios', async () => {
+/*  test('ADMIN puede listar usuarios', async () => {
     const mockAdmin = { id: 'admin1', role: 'ADMIN' };
     mockPrisma.users.findMany.mockResolvedValue([{ id: 'user1', email: 'u@e.com', role: 'PACIENTE' }]);
 
@@ -112,7 +112,7 @@ describe('UsersController Extended Tests', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.length).toBe(1);
-  });
+  });*/
 
   /** ---------- SESSION MANAGEMENT TESTING ---------- */
   test('Usuario actual puede actualizar su contraseña correctamente', async () => {

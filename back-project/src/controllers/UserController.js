@@ -2,7 +2,18 @@ const {PrismaClient} = require ("../generated/prisma");
 const prisma = new PrismaClient();
 const bcrypt = require("bcryptjs");
 const { generateVerificationCode, sendVerificationEmail} = require('../config/emailConfig');
-const { logActivity } = require('../config/loggerService');
+const roleMiddleware = require('../middlewares/roleMiddelware');
+const { 
+  logActivity, 
+  logCreate, 
+  logUpdate, 
+  logDelete, 
+  logView,
+  logLogin,
+  logLogout,
+  logLoginFailed,
+  sanitizeObject 
+} = require('../services/loggerService');
 const { error } = require("console");
 const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 
@@ -78,13 +89,7 @@ const createByAdmin = async (req, res) => {
     });
 
     // Registrar creación de usuario
-    await logActivity({
-      action: "USUARIO_CREADO",
-      userId: req.user.id,
-      userEmail: req.user.email,
-      details: `Administrador creó nuevo usuario: ${email} con rol: ${role}`,
-      req
-    });
+    await logCreate('User', newUser, req.user, req, `Admin ${req.user.fullname} creó nuevo usuario con rol: ${role}`);
 
     // Enviar email con el código de verificación
     const emailResult = await sendVerificationEmail(
@@ -131,6 +136,17 @@ const getAllUsers = async (_req, res) => {
     const users = await prisma.users.findMany({
       select: { id: true, email: true, fullname: true, role: true, isActive: true, createdAt: true }
     });
+    
+    // Registrar consulta de usuarios (opcional)
+    await logActivity({
+      action: 'LIST',
+      entityType: 'User',
+      userId: _req.user.id,
+      userEmail: _req.user.email,
+      userName: _req.user.fullname,
+      details: `Consulta de lista de usuarios por ${_req.user.email}`,
+      req: _req
+    });
 
     return res.json(users);
   } catch (error) {
@@ -161,10 +177,28 @@ const deactivate = async (req, res) => {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
 
-    await prisma.users.update({
+    // Obtener usuario antes de actualizar
+    const user = await prisma.users.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
       data: { isActive: false }
     });
+
+    await logUpdate(
+      'User', 
+      sanitizeObject(user), 
+      sanitizeObject(updatedUser), 
+      req.user, 
+      req, 
+      `Usuario ${user.email} desactivado por ${req.user.email}`
+    );
 
     return res.json({ message: "Usuario desactivado" });
   } catch (error) {
@@ -180,10 +214,28 @@ const activate = async (req, res) => {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
 
-    await prisma.users.update({
+    // Obtener usuario antes de actualizar
+    const user = await prisma.users.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
       data: { isActive: true }
     });
+    
+    await logUpdate(
+      'User', 
+      sanitizeObject(user), 
+      sanitizeObject(updatedUser), 
+      req.user, 
+      req, 
+      `Usuario ${user.email} activado por ${req.user.email}`
+    );
 
     return res.json({ message: "Usuario activado" });
   } catch (error) {
@@ -245,13 +297,17 @@ const updatePassword = async (req, res) => {
     });
 
     // Registrar cambio de contraseña
-    await logActivity({
-      action: "CAMBIO_CONTRASEÑA",
-      userId: id,
-      userEmail: updatedUser.email,
-      details: "Usuario cambió su contraseña",
-      req
-    });
+    const sanitizedOldUser = { ...user, password: '[REDACTED]' };
+    const sanitizedNewUser = { ...updatedUser, password: '[REDACTED]' };
+
+    await logUpdate(
+      'User', 
+      sanitizedOldUser, 
+      sanitizedNewUser, 
+      req.user, 
+      req, 
+      `Actualización de contraseña para usuario: ${user.email}`
+    );
 
     res.status(200).json({ 
       message: "Contraseña actualizada correctamente",

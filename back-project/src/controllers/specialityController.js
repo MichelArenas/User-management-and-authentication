@@ -1,5 +1,12 @@
 const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
+const { 
+  logCreate, 
+  logUpdate, 
+  logDelete, 
+  logView,
+  sanitizeObject 
+} = require('../services/loggerService');
 
 /**
  * Crea una especialidad dentro de un departamento
@@ -29,6 +36,15 @@ const createSpecialty = async (req, res) => {
         ...(description ? { description } : {}), // si agregas description al modelo
       },
     });
+    
+    // Registrar creación de especialidad
+    await logCreate(
+      'Specialty', 
+      sp, 
+      req.user, 
+      req, 
+      `Especialidad ${name} creada por ${req.user?.email || 'usuario no autenticado'}`
+    );
 
     return res.status(201).json({ message: "Especialidad creada", specialty: sp });
   } catch (error) {
@@ -40,7 +56,7 @@ const createSpecialty = async (req, res) => {
 /**
  * Lista todas las especialidades
  */
-const listSpecialties = async (_req, res) => {
+const listSpecialties = async (req, res) => {
   try {
     const listSpecialtie = await prisma.specialties.findMany({
       include: {
@@ -52,6 +68,16 @@ const listSpecialties = async (_req, res) => {
         }
       }
     });
+    
+    // Registrar visualización de especialidades
+    await logView(
+      'Specialty', 
+      { count: listSpecialtie.length },
+      req.user, 
+      req, 
+      `Lista de especialidades consultada por ${req.user?.email || 'usuario no autenticado'}`
+    );
+    
     return res.json(listSpecialtie);
   } catch (error) {
     console.error(error);
@@ -74,6 +100,15 @@ const listByDepartment = async (req, res) => {
       where: { departmentId },
       orderBy: { name: "asc" },
     });
+    
+    // Registrar visualización de especialidades por departamento
+    await logView(
+      'Specialty', 
+      { departmentId, departmentName: dept.name, count: list.length },
+      req.user, 
+      req, 
+      `Especialidades del departamento ${dept.name} consultadas por ${req.user?.email || 'usuario no autenticado'}`
+    );
 
     return res.json(list);
   } catch (error) {
@@ -109,10 +144,26 @@ const updateSpecialty = async (req, res) => {
       data.departmentId = departmentId;
     }
 
+    // Obtener datos anteriores para registro de auditoría
+    const prevData = await prisma.specialties.findUnique({
+      where: { id },
+      include: { department: { select: { name: true } } }
+    });
+    
     const sp = await prisma.specialties.update({
       where: { id },
       data,
     });
+    
+    // Registrar actualización de especialidad
+    await logUpdate(
+      'Specialty', 
+      { id, ...data },
+      prevData,
+      req.user, 
+      req, 
+      `Especialidad ${prevData.name} actualizada por ${req.user?.email || 'usuario no autenticado'}`
+    );
 
     return res.json({ message: "Especialidad actualizada", specialty: sp });
   } catch (error) {
@@ -129,8 +180,27 @@ const updateSpecialty = async (req, res) => {
 const deleteSpecialty = async (req, res) => {
   try {
     const { id } = req.params;
-
+    
+    // Obtener datos para registro de auditoría
+    const specialty = await prisma.specialties.findUnique({
+      where: { id },
+      include: { department: { select: { name: true } } }
+    });
+    
+    if (!specialty) {
+      return res.status(404).json({ message: "Especialidad no encontrada" });
+    }
+    
     await prisma.specialties.delete({ where: { id } });
+    
+    // Registrar eliminación de especialidad
+    await logDelete(
+      'Specialty', 
+      specialty, 
+      req.user, 
+      req, 
+      `Especialidad ${specialty.name} eliminada por ${req.user?.email || 'usuario no autenticado'}`
+    );
     return res.json({ message: "Especialidad eliminada" });
   } catch (error) {
     console.error("deleteSpecialty error:", error);

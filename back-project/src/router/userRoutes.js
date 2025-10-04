@@ -13,8 +13,16 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 router.post('/', verifyJWT, permission('user:create'), Users.createByAdmin); 
 //http://localhost:3002/api/v1/users
 router.get('/', verifyJWT, permission('user:list'), Users.getAllUsers);
+
+// http://localhost:3002/api/v1/users/:id/update-patient
+router.put("/:id/update-patient", verifyJWT, requireRole('ADMINISTRADOR'), Users.updatePatient);
+
+// http://localhost:3002/api/v1/users/patients
+router.get('/patients', verifyJWT, permission('user:list'), Users.getAllPatients);
+
 //http://localhost:3002/api/v1/users/IdObject
 router.get('/:id', Users.getUserById);
+
 
 //http://localhost:3002/api/v1/users/IdObject/deactivate 
 router.patch('/:id/deactivate', verifyJWT, permission('user:deactivate'), Users.deactivate);

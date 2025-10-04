@@ -61,7 +61,7 @@ const signup = async (req, res) => {
 
         const emailResult = await sendVerificationEmail(email, fullname, verificationCode);
         if (!emailResult.success) {
-          await prisma.user.delete({ where: { id: newUser.id } });
+          await prisma.users.delete({ where: { id: newUser.id } });
           return res.status(500).json({ message: "Error al enviar el correo de verificación" });
         }
 
@@ -220,6 +220,9 @@ const signin = async (req, res) => {
     const user = await prisma.users.findUnique({
       where: { email }
     });
+    console.log("email en BD:", user?.email);
+    console.log("email login:", email);
+    console.log("Usuario encontrado:", user)
     
     if (!user) {
       return res.status(401).json({ message: "Credenciales inválidas" });

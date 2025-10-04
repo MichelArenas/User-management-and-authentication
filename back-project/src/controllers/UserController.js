@@ -148,11 +148,12 @@ const getUserById = async (req, res) => {
     });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
-  } catch (e) {
-    console.error("[PUBLIC] get user error:", e);
+  } catch (error) {
+    console.error("[PUBLIC] get user error:", error);
     res.status(500).json({ message: "Error consultando usuario" });
   }
 };
+
 
 // Desactivar usuario
 const deactivate = async (req, res) => {
@@ -449,6 +450,70 @@ const bulkImport = async (req, res) => {
   }
 };
 
+const getAllPatients = async (_req, res) => {
+  try {
+    if (_req.user.role !== "ADMINISTRADOR" && _req.user.role !== "MEDICO") {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+    const pacientes = await prisma.users.findMany({
+      where: { role: "PACIENTE" },
+      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true, createdAt: true }
+    });
+    res.json(pacientes);
+  } catch (error) {
+    console.error("getAllPatients error:", error);
+    res.status(500).json({ message: "Error consultando pacientes" });
+  }
+};
+
+// Actualizar datos de un paciente
+const updatePatient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fullname, email, isActive } = req.body;
+
+    // Solo ADMIN puede actualizar pacientes
+    if (req.user.role !== "ADMINISTRADOR") {
+      return res.status(403).json({ message: "No tienes permisos para actualizar pacientes" });
+    }
+
+    // Verificar que el usuario sea un PACIENTE
+    const existingPatient = await prisma.users.findUnique({ where: { id } });
+    if (!existingPatient) {
+      return res.status(404).json({ message: "Paciente no encontrado" });
+    }
+    if (existingPatient.role !== "PACIENTE") {
+      return res.status(400).json({ message: "El usuario no es un paciente" });
+    }
+
+    // Actualizar paciente
+   // Actualizar paciente
+const updatedPatient = await prisma.users.update({
+  where: { id },
+  data: {
+    fullname: fullname ?? existingPatient.fullname,
+    email: email ? email.toLowerCase().trim() : existingPatient.email,
+    isActive: typeof isActive === "boolean" ? isActive : existingPatient.isActive,
+    updatedAt: new Date()
+  },
+  select: {
+    id: true,
+    email: true,
+    fullname: true,
+    role: true,
+    isActive: true,
+    updatedAt: true
+  }
+});
+
+
+    return res.json(updatedPatient);
+  } catch (error) {
+    console.error("updatePatient error:", error);
+    return res.status(500).json({ message: "Error actualizando paciente" });
+  }
+};
+
 
 module.exports = {
   createByAdmin,
@@ -458,5 +523,7 @@ module.exports = {
   activate,
   updatePassword,
   getActivityLogs,
-  bulkImport
+  bulkImport,
+  getAllPatients,
+  updatePatient
 };

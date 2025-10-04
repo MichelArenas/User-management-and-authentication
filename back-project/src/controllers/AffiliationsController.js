@@ -1,6 +1,13 @@
 // controllers/AffiliationController.js
 const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
+const { 
+  logCreate, 
+  logUpdate, 
+  logDelete, 
+  logView,
+  sanitizeObject 
+} = require('../services/loggerService');
 
 const VALID_ROLES = ["ADMINISTRADOR","MEDICO","ENFERMERO","PACIENTE"];
 
@@ -53,6 +60,31 @@ const createAffiliation = async (req, res) => {
     const record = await prisma.userDeptRoles.create({
       data: { userId, departmentId: deptId, specialtyId: specId || null, role }
     });
+    
+    // Obtener información de departamento y especialidad para el registro
+    const dept = await prisma.departments.findUnique({
+      where: { id: deptId },
+      select: { name: true }
+    });
+    
+    const specialty = specId ? await prisma.specialties.findUnique({
+      where: { id: specId },
+      select: { name: true }
+    }) : null;
+    
+    // Registrar creación de afiliación
+    await logCreate(
+      'Affiliation', 
+      {
+        ...record,
+        departmentName: dept?.name,
+        specialtyName: specialty?.name,
+        userName: user.name
+      }, 
+      req.user, 
+      req, 
+      `Afiliación creada para usuario ${user.email} como ${role} en ${dept?.name}${specialty ? ', especialidad ' + specialty.name : ''} por ${req.user?.email || 'usuario no autenticado'}`
+    );
 
     return res.status(201).json({ message: "Afiliación creada", affiliation: record });
   } catch (error) {
@@ -72,6 +104,22 @@ const listAffiliationsByUser = async (req, res) => {
       },
       orderBy: { createdAt: "desc" }
     });
+    
+    // Obtener información del usuario para el registro
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true }
+    });
+    
+    // Registrar visualización de afiliaciones
+    await logView(
+      'Affiliation', 
+      { userId, userName: user?.name, count: items.length },
+      req.user, 
+      req, 
+      `Afiliaciones de usuario ${user?.email || userId} consultadas por ${req.user?.email || 'usuario no autenticado'}`
+    );
+    
     return res.json(items);
   } catch (error) {
     console.error("listAffiliationsByUser error:", error);
@@ -82,7 +130,31 @@ const listAffiliationsByUser = async (req, res) => {
 const deleteAffiliation = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Obtener datos de afiliación para el registro
+    const affiliation = await prisma.userDeptRoles.findUnique({
+      where: { id },
+      include: {
+        user: { select: { email: true, name: true } },
+        department: { select: { name: true } },
+        specialty: { select: { name: true } }
+      }
+    });
+    
+    if (!affiliation) {
+      return res.status(404).json({ message: "Afiliación no encontrada" });
+    }
+    
     await prisma.userDeptRoles.delete({ where: { id } });
+    
+    // Registrar eliminación de afiliación
+    await logDelete(
+      'Affiliation', 
+      affiliation, 
+      req.user, 
+      req, 
+      `Afiliación eliminada: ${affiliation.user.email} como ${affiliation.role} en ${affiliation.department.name}${affiliation.specialty ? ', especialidad ' + affiliation.specialty.name : ''} por ${req.user?.email || 'usuario no autenticado'}`
+    );
     return res.json({ message: "Afiliación eliminada" });
   } catch (error) {
     console.error("deleteAffiliation error:", error);

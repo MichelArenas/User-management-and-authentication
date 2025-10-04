@@ -3,7 +3,17 @@ const prisma = new PrismaClient();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { generateVerificationCode, sendVerificationEmail, send2FAEmail } = require('../config/emailConfig');
-const { logActivity } = require('../config/loggerService');
+const { 
+    logActivity, 
+    logCreate, 
+    logUpdate, 
+    logDelete, 
+    logView,
+    logLogin,
+    logLogout,
+    logLoginFailed,
+    sanitizeObject 
+} = require('../services/loggerService');
 
 const verificationCodes = {};
 
@@ -58,6 +68,9 @@ const signup = async (req, res) => {
                 verificationCodeExpires: verificationExpires
             }
         });
+        
+        // Registrar la creación del usuario
+        await logCreate('User', sanitizeObject(newUser), { id: 'system', email: 'system', fullname: 'Sistema' }, req, `Registro de usuario: ${email} con rol ADMINISTRADOR`);
 
         const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
         if (!emailResult.success) {
@@ -126,13 +139,14 @@ const verifyEmail = async (req, res) => {
     });
 
     //Registrar activacion de cuenta
-    await logActivity({
-      action: "CUENTA_ACTIVADA",
-      userId: updatedUser.id,
-      userEmail: updatedUser.email,
-      details: "Usuario verificó su email y activó su cuenta",
-      req
-    });
+    await logUpdate(
+      'User',
+      sanitizeObject({...user, status: 'PENDING'}),
+      sanitizeObject(updatedUser),
+      { id: updatedUser.id, email: updatedUser.email, fullname: updatedUser.fullname },
+      req,
+      "Usuario verificó su email y activó su cuenta"
+    );
 
     return res.status(200).json({
       message: "Email verificado exitosamente. Tu cuenta está ahora activa. Por favor, inicia sesión para acceder.",
@@ -221,8 +235,13 @@ const signin = async (req, res) => {
     const user = await prisma.users.findUnique({
       where: { email }
     });
+    console.log("email en BD:", user?.email);
+    console.log("email login:", email);
+    console.log("Usuario encontrado:", user)
     
     if (!user) {
+      // Registrar intento fallido de inicio de sesión
+      await logLoginFailed(email, req, `Usuario no encontrado: ${email}`);
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
@@ -293,9 +312,12 @@ const signin = async (req, res) => {
       // Registrar inicio de sesión
       await logActivity({
         action: "INICIO_SESION",
+        entityType: "User",
+        entityId: user.id,
         userId: user.id,
         userEmail: user.email,
-        details: `Usuario inició sesión exitosamente con rol: ${user.role}`,
+        userName: user.fullname,
+        details: `Inicio de sesión exitoso con rol: ${user.role}`,
         req
       });
       
@@ -319,6 +341,18 @@ const signin = async (req, res) => {
         timestamp: new Date()
       };
       
+      // Registrar intento de inicio de sesión (requiere 2FA)
+      await logActivity({
+        action: "2FA_REQUIRED",
+        entityType: "User",
+        entityId: user.id,
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.fullname,
+        details: `Código de verificación 2FA enviado para: ${email}`,
+        req
+      });
+      
       // Enviar email con el código de 2FA
       await send2FAEmail(email, user.fullname, code);
       
@@ -338,13 +372,7 @@ const signin = async (req, res) => {
 const logout = async (req, res) => {
   try {
     // Registrar actividad de cierre de sesión
-    await logActivity({
-      action: "CIERRE_SESION",
-      userId: req.user.id,
-      userEmail: req.user.email,
-      details: "Usuario cerró sesión",
-      req
-    });
+    await logLogout(req.user, req);
     
     return res.status(200).json({ message: "Cierre de sesión exitoso" });
   } catch (error) {

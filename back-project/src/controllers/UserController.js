@@ -2,7 +2,18 @@ const {PrismaClient} = require ("../generated/prisma");
 const prisma = new PrismaClient();
 const bcrypt = require("bcryptjs");
 const { generateVerificationCode, sendVerificationEmail} = require('../config/emailConfig');
-const { logActivity } = require('../config/loggerService');
+const roleMiddleware = require('../middlewares/roleMiddelware');
+const { 
+  logActivity, 
+  logCreate, 
+  logUpdate, 
+  logDelete, 
+  logView,
+  logLogin,
+  logLogout,
+  logLoginFailed,
+  sanitizeObject 
+} = require('../services/loggerService');
 const { error } = require("console");
 const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 
@@ -79,13 +90,7 @@ const createByAdmin = async (req, res) => {
     });
 
     // Registrar creación de usuario
-    await logActivity({
-      action: "USUARIO_CREADO",
-      userId: req.user.id,
-      userEmail: req.user.email,
-      details: `Administrador creó nuevo usuario: ${email} con rol: ${role}`,
-      req
-    });
+    await logCreate('User', newUser, req.user, req, `Admin ${req.user.fullname} creó nuevo usuario con rol: ${role}`);
 
     // Enviar email con el código de verificación
     const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
@@ -135,6 +140,17 @@ const getAllUsers = async (_req, res) => {
     const users = await prisma.users.findMany({
       select: { id: true, email: true, fullname: true, role: true, isActive: true, createdAt: true }
     });
+    
+    // Registrar consulta de usuarios (opcional)
+    await logActivity({
+      action: 'LIST',
+      entityType: 'User',
+      userId: _req.user.id,
+      userEmail: _req.user.email,
+      userName: _req.user.fullname,
+      details: `Consulta de lista de usuarios por ${_req.user.email}`,
+      req: _req
+    });
 
     return res.json(users);
   } catch (error) {
@@ -152,11 +168,12 @@ const getUserById = async (req, res) => {
     });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
-  } catch (e) {
-    console.error("[PUBLIC] get user error:", e);
+  } catch (error) {
+    console.error("[PUBLIC] get user error:", error);
     res.status(500).json({ message: "Error consultando usuario" });
   }
 };
+
 
 // Desactivar usuario
 const deactivate = async (req, res) => {
@@ -165,10 +182,28 @@ const deactivate = async (req, res) => {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
 
-    await prisma.users.update({
+    // Obtener usuario antes de actualizar
+    const user = await prisma.users.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
       data: { isActive: false }
     });
+
+    await logUpdate(
+      'User', 
+      sanitizeObject(user), 
+      sanitizeObject(updatedUser), 
+      req.user, 
+      req, 
+      `Usuario ${user.email} desactivado por ${req.user.email}`
+    );
 
     return res.json({ message: "Usuario desactivado" });
   } catch (error) {
@@ -184,10 +219,28 @@ const activate = async (req, res) => {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
 
-    await prisma.users.update({
+    // Obtener usuario antes de actualizar
+    const user = await prisma.users.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
       data: { isActive: true }
     });
+    
+    await logUpdate(
+      'User', 
+      sanitizeObject(user), 
+      sanitizeObject(updatedUser), 
+      req.user, 
+      req, 
+      `Usuario ${user.email} activado por ${req.user.email}`
+    );
 
     return res.json({ message: "Usuario activado" });
   } catch (error) {
@@ -249,13 +302,17 @@ const updatePassword = async (req, res) => {
     });
 
     // Registrar cambio de contraseña
-    await logActivity({
-      action: "CAMBIO_CONTRASEÑA",
-      userId: id,
-      userEmail: updatedUser.email,
-      details: "Usuario cambió su contraseña",
-      req
-    });
+    const sanitizedOldUser = { ...user, password: '[REDACTED]' };
+    const sanitizedNewUser = { ...updatedUser, password: '[REDACTED]' };
+
+    await logUpdate(
+      'User', 
+      sanitizedOldUser, 
+      sanitizedNewUser, 
+      req.user, 
+      req, 
+      `Actualización de contraseña para usuario: ${user.email}`
+    );
 
     res.status(200).json({ 
       message: "Contraseña actualizada correctamente",
@@ -453,6 +510,70 @@ const bulkImport = async (req, res) => {
   }
 };
 
+const getAllPatients = async (_req, res) => {
+  try {
+    if (_req.user.role !== "ADMINISTRADOR" && _req.user.role !== "MEDICO") {
+      return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
+    }
+    const pacientes = await prisma.users.findMany({
+      where: { role: "PACIENTE" },
+      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true, createdAt: true }
+    });
+    res.json(pacientes);
+  } catch (error) {
+    console.error("getAllPatients error:", error);
+    res.status(500).json({ message: "Error consultando pacientes" });
+  }
+};
+
+// Actualizar datos de un paciente
+const updatePatient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fullname, email, isActive } = req.body;
+
+    // Solo ADMIN puede actualizar pacientes
+    if (req.user.role !== "ADMINISTRADOR") {
+      return res.status(403).json({ message: "No tienes permisos para actualizar pacientes" });
+    }
+
+    // Verificar que el usuario sea un PACIENTE
+    const existingPatient = await prisma.users.findUnique({ where: { id } });
+    if (!existingPatient) {
+      return res.status(404).json({ message: "Paciente no encontrado" });
+    }
+    if (existingPatient.role !== "PACIENTE") {
+      return res.status(400).json({ message: "El usuario no es un paciente" });
+    }
+
+    // Actualizar paciente
+   // Actualizar paciente
+const updatedPatient = await prisma.users.update({
+  where: { id },
+  data: {
+    fullname: fullname ?? existingPatient.fullname,
+    email: email ? email.toLowerCase().trim() : existingPatient.email,
+    isActive: typeof isActive === "boolean" ? isActive : existingPatient.isActive,
+    updatedAt: new Date()
+  },
+  select: {
+    id: true,
+    email: true,
+    fullname: true,
+    role: true,
+    isActive: true,
+    updatedAt: true
+  }
+});
+
+
+    return res.json(updatedPatient);
+  } catch (error) {
+    console.error("updatePatient error:", error);
+    return res.status(500).json({ message: "Error actualizando paciente" });
+  }
+};
+
 
 module.exports = {
   createByAdmin,
@@ -462,5 +583,7 @@ module.exports = {
   activate,
   updatePassword,
   getActivityLogs,
-  bulkImport
+  bulkImport,
+  getAllPatients,
+  updatePatient
 };

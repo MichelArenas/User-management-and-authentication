@@ -6,7 +6,7 @@ const Users = require('../controllers/UserController');
 const requireRole = require('../middlewares/roleMiddelware');
 
 const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } }); // 60MB limit
 
 
 //http://localhost:3002/api/v1/users

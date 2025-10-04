@@ -59,9 +59,9 @@ const signup = async (req, res) => {
             }
         });
 
-        const emailResult = await sendVerificationEmail(email, fullname, verificationCode);
+        const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
         if (!emailResult.success) {
-          await prisma.user.delete({ where: { id: newUser.id } });
+          await prisma.users.delete({ where: { id: newUser.id } });
           return res.status(500).json({ message: "Error al enviar el correo de verificación" });
         }
 
@@ -186,7 +186,8 @@ const resendVerificationCode = async (req, res) => {
     const emailResult = await sendVerificationEmail(
       email,
       user.fullname,
-      verificationCode
+      verificationCode,
+      10
     );
 
     if (!emailResult.success) {

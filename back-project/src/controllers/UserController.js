@@ -6,6 +6,7 @@ const { logActivity } = require('../config/loggerService');
 const { error } = require("console");
 const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 
+
 const {  VALID_ROLES,
   isEmailValid,
   isPasswordStrong,
@@ -18,7 +19,7 @@ function buildBulkVerification(status) {
   }
   const verificationCode = generateVerificationCode();
   const expires = new Date();
-  expires.setMinutes(expires.getMinutes() + 60); // 60 minutos de validez
+  expires.setHours(expires.getHours() + 24); // 24 horas de validez
   return { verificationCode, verificationCodeExpires: expires };
 }
 
@@ -87,11 +88,7 @@ const createByAdmin = async (req, res) => {
     });
 
     // Enviar email con el código de verificación
-    const emailResult = await sendVerificationEmail(
-      email,
-      fullname,
-      verificationCode
-    );
+    const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
 
     if (!emailResult.success) {
       // Si falla el envío del email, eliminamos el usuario creado
@@ -127,6 +124,13 @@ const getAllUsers = async (_req, res) => {
     if (_req.user.role !== "ADMINISTRADOR") {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
+
+    const {
+      page = "1",
+      limit = "10",
+      sortBy = "createdAt",     // email | fullname | role | createdAt | isActive | status
+      sortOrder = "desc",       // asc | desc
+    } = req.query;
 
     const users = await prisma.users.findMany({
       select: { id: true, email: true, fullname: true, role: true, isActive: true, createdAt: true }
@@ -400,7 +404,7 @@ const bulkImport = async (req, res) => {
     if (toEmail.length) {
       const results = await Promise.allSettled(
         toEmail.map(({ email, fullname, code }) =>
-          sendVerificationEmail(email, fullname, code)
+          sendVerificationEmail(email, fullname, code, 1440)
         )
       );
 

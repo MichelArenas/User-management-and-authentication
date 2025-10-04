@@ -1,7 +1,13 @@
 // test/BulkImportController.test.js
 const express = require('express');
 const request = require('supertest');
-const bcrypt = require('bcryptjs');
+
+// Mocks mínimos para que el router no bloquee por auth/permission
+jest.mock('../src/middlewares/authMiddelware', () => (req, _res, next) => {
+  req.user = { id: 'u1', email: 'admin@test.com', role: 'ADMINISTRADOR' };
+  next();
+});
+jest.mock('../src/middlewares/permissionMiddelware', () => () => (_req, _res, next) => next());
 
 // ---- Mocks de dependencias externas ----
 const mockPrisma = {
@@ -25,12 +31,11 @@ jest.mock('../src/config/emailConfig', () => ({
   generateVerificationCode: jest.fn(() => '123456'),                   // ⬅️ faltaba
 }));
 
-
 jest.mock('bcryptjs', () => ({
   hash: jest.fn(async () => 'hashed-pass'),
 }));
 
-// ✅ Mock del parser de CSV (sin variables “fuera de alcance” no permitidas)
+// Mock del parser de CSV (sin variables “fuera de alcance” no permitidas)
 const mockPrepare = jest.fn();
 jest.mock('../src/services/bulkImportService', () => ({
   prepareBulkUsersFromCsv: (...args) => mockPrepare(...args),
@@ -44,6 +49,8 @@ const app = express();
 
 // almacenamos el file del test actual aquí
 let __currentFile = null;
+
+
 app.use((req, _res, next) => {
   // simula usuario autenticado admin
   req.user = { id: 'admin-1', email: 'admin@test.com', role: 'ADMINISTRADOR' };
@@ -54,21 +61,35 @@ app.use((req, _res, next) => {
 app.post('/api/v1/users/bulk-import', bulkImport);
 
 // ---- Helpers para construir "archivo" y setear mocks comunes ----
-function setFileFromString(name, content, mimetype = 'text/csv') {
-  __currentFile = content
-    ? {
-        originalname: name,
-        mimetype,
-        size: Buffer.byteLength(content),
-        buffer: Buffer.from(content, 'utf8'),
-      }
-    : null;
-}
+function setFileFromString(nameOrOpts, content, mimetype = 'text/csv', sizeBytes) {
+  // Soporta objeto o argumentos
+   if (nameOrOpts === null && content === null) {
+    __currentFile = null;
+    return;
+  }
+  const opts = typeof nameOrOpts === 'object' && nameOrOpts !== null
+    ? nameOrOpts
+    : { name: nameOrOpts, content, mimetype, sizeBytes };
 
+  const name = opts.name ?? 'data.csv';
+  const body = opts.content ?? '';
+  const type = opts.mimetype ?? 'text/csv';
+  const buf  = Buffer.from(body, 'utf8');
+
+  __currentFile = {
+    originalname: name,
+    mimetype: type,
+    size: typeof opts.sizeBytes === 'number' ? opts.sizeBytes : buf.length,
+    buffer: buf,
+  };
+}
 beforeEach(() => {
   jest.clearAllMocks();
   __currentFile = null;
 });
+
+// Lee límite desde env o usa 5 MB por defecto (ajústalo al que uses en tu controlador)
+const LIMIT = 60 * 1024 * 1024;
 
 describe('bulkImport - casos positivos, negativos, vacíos y nulos', () => {
   test('400 si NO se envía archivo (nulo)', async () => {
@@ -282,4 +303,51 @@ describe('bulkImport - casos positivos, negativos, vacíos y nulos', () => {
     expect(res.body.duplicatesDB).toHaveLength(0);
     expect(res.body.errors).toHaveLength(0);
   });
+
+const expressRouter = require('express');
+const userRoutes = require('../src/router/userRoutes'); // o ../src/routes/userRoutes si esa es tu ruta
+
+function makeRouterApp() {
+  const app = expressRouter();
+  app.use(expressRouter.json());
+  app.use('/api/v1/users', userRoutes);
+
+  // Error handler para convertir errores Multer en respuestas claras en test
+  app.use((err, _req, res, _next) => {
+    if (err && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: 'El archivo excede el límite de 60MB.' });
+    }
+    if (err && err.code === 'INVALID_FILETYPE') {
+      return res.status(415).json({ message: 'Tipo inválido. Solo se permite CSV.' });
+    }
+    return res.status(400).json({ message: err?.message || 'Error al subir archivo' });
+  });
+  return app;
+}
+
+describe('Bulk import - límite de tamaño CSV', () => {
+  test('RECHAZA archivo mayor al límite (espera 413 o 400 con mensaje de tamaño)', async () => {
+    const appRouter = makeRouterApp();
+    const buf = Buffer.alloc(LIMIT + 1, 0x61);
+    const res = await request(appRouter)
+      .post('/api/v1/users/bulk-import')
+      .attach('file', buf, { filename: 'big.csv', contentType: 'text/csv' });
+
+    expect(res.statusCode).toBe(413);
+    expect(JSON.stringify(res.body).toLowerCase()).toMatch(/60|l[ií]mite|size|tamañ/);
+  });
+
+test('NO 413 si pesa exactamente 60MB', async () => {
+    const appRouter = makeRouterApp();
+    const buf = Buffer.alloc(LIMIT, 0x61);
+    const res = await request(appRouter)
+      .post('/api/v1/users/bulk-import')
+      .attach('file', buf, { filename: 'ok.csv', contentType: 'text/csv' });
+
+    expect(res.statusCode).not.toBe(413);
+    expect([200, 400]).toContain(res.statusCode); // dependerá de tu parser
+  });
+
+  
+});
 });

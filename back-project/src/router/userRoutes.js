@@ -33,8 +33,6 @@ router.patch('/:id/activate', verifyJWT, permission('user:activate'), Users.acti
 //http://localhost:3002/api/v1/users/IdObject/password
 router.put('/:id/password', verifyJWT, Users.updatePassword);
 
-//http://localhost:3002/api/v1/users/activity-logs
-router.get('/activity-logs', verifyJWT, requireRole('ADMINISTRADOR'), Users.getActivityLogs);
 //http://localhost:3002/api/v1/users/bulk-import
 router.post('/bulk-import', verifyJWT, permission('user:create'), upload.single('file'), Users.bulkImport);
 

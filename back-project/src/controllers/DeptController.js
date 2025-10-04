@@ -1,5 +1,13 @@
 const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
+const { 
+  logActivity, 
+  logCreate, 
+  logUpdate, 
+  logDelete, 
+  logView,
+  sanitizeObject 
+} = require('../services/loggerService');
 
 const createDepartment = async (req, res) => {
   try {
@@ -24,6 +32,16 @@ const createDepartment = async (req, res) => {
             description: description
         }
     });
+    
+    // Registrar creación de departamento
+    await logCreate(
+      'Department', 
+      department, 
+      req.user, 
+      req, 
+      `Departamento ${name} creado por ${req.user.email}`
+    );
+    
     return res.status(201).json({ message: "Departamento creado exitosamente", department });
   } catch (error) {
       console.error(error);
@@ -31,9 +49,19 @@ const createDepartment = async (req, res) => {
   }
 };
 
-const listDepartments = async (_req, res) => {
+const listDepartments = async (req, res) => {
   try {
     const depts = await prisma.departments.findMany();
+    
+    // Registrar visualización de departamentos
+    await logView(
+      'Department', 
+      { count: depts.length },
+      req.user, 
+      req, 
+      `Lista de departamentos consultada por ${req.user?.email || 'usuario no autenticado'}`
+    );
+    
     return res.json(depts);
   } catch (error) {
     console.error("listDepartments error:", error);

@@ -38,16 +38,21 @@ model Users {
 }
 
 model ActivityLog {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String?  @db.ObjectId
-  userEmail String?
-  action    String
-  details   String?
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      Users?   @relation(fields: [userId], references: [id])
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String?  @db.ObjectId
+  userEmail  String?
+  userName   String?
+  action     String
+  entityType String?
+  entityId   String?  @db.ObjectId
+  oldValues  Json?
+  newValues  Json?
+  details    String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       Users?   @relation(fields: [userId], references: [id])
 }
 
 model Departments {

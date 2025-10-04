@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 
-module.exports = (req, res, next) =>{
+module.exports = (req, res, next) => {
     const auth = req.headers.authorization || '';
     console.log('[AUTH] Authorization header:', auth ? 'present' : 'missing');
     const token = auth.startsWith('Bearer ' ) ? auth.slice(7) : null;

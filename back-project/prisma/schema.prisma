@@ -62,7 +62,6 @@ model Users {
   blood_type              BloodType? // Ahora usa el enum BloodType
   password                String
   role                    Role
-  isActive                Boolean         @default(true)
   status                  String          @default("PENDING")
   verificationCode        String?
   verificationCodeExpires DateTime?

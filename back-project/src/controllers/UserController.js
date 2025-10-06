@@ -212,37 +212,85 @@ const createByAdmin = async (req, res) => {
 };
 
 // Listar todos los usuarios
-const getAllUsers = async (_req, res) => {
+const getAllUsers = async (req, res) => {
   try {
-    if (_req.user.role !== "ADMINISTRADOR") {
+    if (req.user.role !== "ADMINISTRADOR") {
       return res.status(403).json({ message: "No tienes permisos para realizar esta acción" });
     }
 
     const {
       page = "1",
       limit = "10",
-      sortBy = "createdAt",     // email | fullname | role | createdAt | isActive | status
-      sortOrder = "desc",       // asc | desc
+      sortBy = "createdAt",     // email | fullname | role | createdAt | status
+      sortOrder = "desc",
+      role,
+      status,
+      q     
     } = req.query;
 
+    // Validaciones / limpieza
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const pageSize = Math.max(1, parseInt(limit, 10) || 10);
+
+    // Validar campos de ordenamiento permitidos (evita inyección)
+    const allowedSortBy = new Set(["email", "fullname", "role", "createdAt", "status"]);
+    const allowedSortOrder = new Set(["asc", "desc"]);
+
+    const orderField = allowedSortBy.has(sortBy) ? sortBy : "createdAt";
+    const orderDirection = allowedSortOrder.has(sortOrder.toLowerCase()) ? sortOrder.toLowerCase() : "desc";
+
+    // Construir filtro where para prisma
+    const where = {};
+
+    if (role) where.role = role;
+    if (status) where.status = status;
+
+    if (q) {
+      // Búsqueda simple: email o fullname contiene q (case-insensitive)
+      where.OR = [
+        { email: { contains: q, mode: "insensitive" } },
+        { fullname: { contains: q, mode: "insensitive" } }
+      ];
+    }
+    // Consulta con paginación y filtros
     const users = await prisma.users.findMany({
-      select: { id: true, email: true, fullname: true, role: true, isActive: true, createdAt: true }
+      where,
+      select: { id: true, email: true, fullname: true, role: true, createdAt: true },
+      orderBy: { [orderField]: orderDirection },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize
     });
+    // Conteo total para paginación
+    const totalUsers = await prisma.users.count({ where });
     
     // Registrar consulta de usuarios (opcional)
-    await logActivity({
-      action: 'LIST',
-      entityType: 'User',
-      userId: _req.user.id,
-      userEmail: _req.user.email,
-      userName: _req.user.fullname,
-      details: `Consulta de lista de usuarios por ${_req.user.email}`,
-      req: _req
-    });
+    try {
+      await logActivity({
+        action: 'LIST',
+        entityId: req.user.id,
+        userId: req.user.id,
+        oldValues: null,
+        newValues: null,
+        userEmail: req.user.email,
+        userName: req.user.fullname,
+        details: `Consulta de lista de usuarios por ${req.user.email}`,
+        req // pasar req si tu logger lo espera
+      });
+    } catch (logErr) {
+      console.warn("Error registrando actividad (no crítico):", logErr && logErr.message ? logErr.message : logErr);
+    }
 
-    return res.json(users);
+    return res.json({
+      users,
+      pagination: {
+        total: totalUsers,
+        pages: Math.ceil(totalUsers / pageSize),
+        currentPage: pageNum,
+        pageSize: pageSize
+      }
+    });
   } catch (error) {
-    console.error("listAll error:", error);
+    console.error("getAllUsers error:", error);
     return res.status(500).json({ message: "Error listando usuarios" });
   }
 };
@@ -252,7 +300,7 @@ const getUserById = async (req, res) => {
   try {
     const user = await prisma.users.findUnique({
       where: { id: req.params.id },
-      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true, createdAt: true }
+      select: { id: true, email: true, fullname: true, role: true, status: true, createdAt: true }
     });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
@@ -281,7 +329,8 @@ const deactivate = async (req, res) => {
 
     const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
-      data: { isActive: false }
+      data: { status: "DISABLED", updatedAt: new Date() },
+      select: { id: true, email: true, fullname: true, role: true, status: true }
     });
 
     await logUpdate(
@@ -318,7 +367,8 @@ const activate = async (req, res) => {
 
     const updatedUser = await prisma.users.update({
       where: { id: req.params.id },
-      data: { isActive: true }
+      data: { status: "ACTIVE", updatedAt: new Date() },
+      select: { id: true, email: true, fullname: true, role: true, status: true }
     });
     
     await logUpdate(
@@ -520,14 +570,13 @@ const bulkImport = async (req, res) => {
             fullname: userData.fullname,
             role: userData.role,
             status: effectiveStatus,
-            isActive: true,
             password: hashed,
             ...(effectiveStatus === "PENDING" && verificationCode?{
               verificationCode,
               verificationCodeExpires
             }:{}),
           },
-          select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true }
+          select: { id: true, email: true, fullname: true, role: true, status: true }
         });
         inserted.push(newUser);
         //Enviar email si el estado es PENDING
@@ -605,7 +654,7 @@ const getAllPatients = async (_req, res) => {
     }
     const pacientes = await prisma.users.findMany({
       where: { role: "PACIENTE" },
-      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true, createdAt: true }
+      select: { id: true, email: true, fullname: true, role: true, status: true, createdAt: true }
     });
     res.json(pacientes);
   } catch (error) {
@@ -727,15 +776,6 @@ const updatePatient = async (req, res) => {
         relationship: emergencyContact.relationship || null
       };
     }
-    
-    if (medicalInfo !== undefined) {
-      updateData.medicalInfo = {
-        allergies: medicalInfo.allergies || [],
-        conditions: medicalInfo.conditions || [],
-        medications: medicalInfo.medications || [],
-        bloodType: medicalInfo.bloodType || null
-      };
-    }
 
     // Actualizar paciente
     const updatedPatient = await prisma.users.update({
@@ -757,7 +797,6 @@ const updatePatient = async (req, res) => {
         city: true,
         blood_type: true,
         emergencyContact: true,
-        medicalInfo: true,
         updatedAt: true
       }
     });

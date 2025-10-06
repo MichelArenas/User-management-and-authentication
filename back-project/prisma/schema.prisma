@@ -27,7 +27,6 @@ model Users {
   fullname                String
   password                String
   role                    Role
-  isActive                Boolean         @default(true)
   status                  String          @default("PENDING")
   verificationCode        String?
   verificationCodeExpires DateTime?

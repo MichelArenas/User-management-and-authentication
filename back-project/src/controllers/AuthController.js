@@ -255,7 +255,7 @@ const signin = async (req, res) => {
     }
 
     // Validar si está habilitado por el admin
-    if (user.isActive === false) {
+    if (user.status === "DISABLED") {
       return res.status(403).json({
         message: "Tu cuenta está deshabilitada por el administrador. Contacta con soporte."
       });

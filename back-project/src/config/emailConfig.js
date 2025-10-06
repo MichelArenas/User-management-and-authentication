@@ -29,7 +29,10 @@ function formatDuration(minutes) {
 }
 
 // Plantilla HTML para correo de activación de cuenta
-const getActivationEmailTemplate = (fullname, activationCode) => {
+const getActivationEmailTemplate = (fullname, activationCode, expiresInHours = 24) => {
+  // Calcular texto de expiración (convertir horas a minutos para usar formatDuration)
+  const expiresText = formatDuration(expiresInHours * 60);
+  
   return `
   <div style="font-family: Arial, sans-serif; background-color: #F9FAFB; padding: 30px;">
     <div style="max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #E6F9F0, #D0F2E0); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.1); padding: 30px; text-align: center;">
@@ -90,7 +93,7 @@ const get2FAEmailTemplate = (fullname, verificationCode) => {
 };
 
 // Función para enviar email de activación de cuenta
-const sendVerificationEmail = async (email, fullname, verificationCode, expiresMinutes) => {
+const sendVerificationEmail = async (email, fullname, verificationCode, expiresInHours = 24) => {
   // Ruta al archivo del logo
   const logoPath = path.join(__dirname, '../../public/images/logo.png');
   
@@ -98,7 +101,7 @@ const sendVerificationEmail = async (email, fullname, verificationCode, expiresM
     from: process.env.SMTP_USER,
     to: email,
     subject: "Activa tu cuenta en MedCore",
-    html: getActivationEmailTemplate(fullname, verificationCode, expiresMinutes),
+    html: getActivationEmailTemplate(fullname, verificationCode, expiresInHours),
     attachments: [
       {
         filename: 'logo.png',

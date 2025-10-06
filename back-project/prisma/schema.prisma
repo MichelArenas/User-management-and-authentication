@@ -21,16 +21,54 @@ enum Role {
   PACIENTE
 }
 
+enum IdType {
+  CC // Cédula de Ciudadanía
+  TI // Tarjeta de Identidad
+  CE // Cédula de Extranjería
+  PP // Pasaporte
+  NIT // Número de Identificación Tributaria
+}
+
+enum Gender {
+  MASCULINO
+  FEMENINO
+  OTRO
+  NO_RESPONDE
+}
+
+enum BloodType {
+  O_POSITIVE
+  O_NEGATIVE
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+}
+
 model Users {
   id                      String          @id @default(auto()) @map("_id") @db.ObjectId
+  id_number               String          @unique
+  id_type                 IdType
   email                   String          @unique
   fullname                String
+  date_of_birth           DateTime
+  age                     Int
+  gender                  Gender? // Ahora usa el enum Gender
+  phone                   String?
+  address                 String?
+  city                    String?
+  blood_type              BloodType? // Ahora usa el enum BloodType
   password                String
   role                    Role
   isActive                Boolean         @default(true)
   status                  String          @default("PENDING")
   verificationCode        String?
   verificationCodeExpires DateTime?
+  emergencyContact        Json? // Estructura: {name: String, phone: String, relationship: String}
+  profileImage            String? // URL para foto de perfil
+  lastLogin               DateTime? // Última fecha de inicio de sesión
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
   activityLogs            ActivityLog[]

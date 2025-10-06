@@ -18,9 +18,12 @@ const { error } = require("console");
 const {prepareBulkUsersFromCsv} = require("../services/bulkImportService");
 
 
-const {  VALID_ROLES,
+const {  
+  VALID_ROLES,
   isEmailValid,
   isPasswordStrong,
+  calculateAge,
+  isValidAge
 } = require("../utils/userUtils");
 
 function buildBulkVerification(status) {
@@ -36,64 +39,144 @@ function buildBulkVerification(status) {
 
 const createByAdmin = async (req, res) => {
   try {
-    let { email, fullname, password, role } = req.body;
+    let { 
+      email, 
+      fullname, 
+      password, 
+      role, 
+      id_number, 
+      id_type, 
+      date_of_birth,
+      gender,
+      phone,
+      address,
+      city,
+      blood_type
+    } = req.body;
 
-    if (!email || !fullname || !role) {
-      return res.status(400).json({ message: "email, fullname y role son obligatorios" });
+    // Validaciones de campos obligatorios
+    if (!email || !fullname || !role || !id_number || !id_type || !date_of_birth) {
+      return res.status(400).json({ 
+        message: "Los campos email, fullname, role, id_number, id_type y date_of_birth son obligatorios" 
+      });
     }
+
+    // Validación de email y formato
+    email = email.toLowerCase().trim();
+    if (!isEmailValid(email)) {
+      return res.status(400).json({ message: "El correo electrónico no es válido" });
+    }
+
+    // Validación de contraseña
+    if (!isPasswordStrong(password)) {
+      return res.status(400).json({
+        message: "La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número"
+      });
+    }
+
+    // Validar rol
     if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ message: "Rol inválido" });
     }
 
-    email = email.toLowerCase().trim();
-
-    // Validaciones de email y password
-    if (!isEmailValid(email)) {
-        return res.status(400).json({ message: "El correo electrónico no es válido" });
+    // Validar fecha de nacimiento y calcular edad
+    const birthDate = new Date(date_of_birth);
+    const today = new Date();
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(birthDate.getTime())) {
+      return res.status(400).json({ message: "La fecha de nacimiento no es válida" });
+    }
+    
+    // Calcular edad
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--; // Todavía no ha cumplido años este año
+    }
+    
+    // Validar rango de edad (0-100 años)
+    if (age < 0 || age > 100) {
+      return res.status(400).json({ 
+        message: "La edad debe estar entre 0 y 100 años" 
+      });
     }
 
-    if (!isPasswordStrong(password)) {
-        return res.status(400).json({
-            message: "La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número"
-        });
-    }
-
-    // Verificar si ya existe
-    const existingUser = await prisma.users.findUnique({
-        where: { email }
+    // Verificar si ya existe el email
+    const existingUserByEmail = await prisma.users.findUnique({
+      where: { email }
     });
-    if (existingUser) {
-        return res.status(400).json({ message: "El correo ya está registrado" });
+    
+    if (existingUserByEmail) {
+      return res.status(400).json({ message: "El correo ya está registrado" });
+    }
+    
+    // Verificar si ya existe el número de identificación
+    const existingUserById = await prisma.users.findUnique({
+      where: { id_number }
+    });
+    
+    if (existingUserById) {
+      return res.status(400).json({ message: "El número de identificación ya está registrado" });
     }
 
     // Encriptar contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Incluye el código de verificación → 15 minutos
+    // Incluye el código de verificación → 24 horas
     const verificationCode = generateVerificationCode();
     const verificationExpires = new Date();
-    verificationExpires.setMinutes(verificationExpires.getMinutes() + 15);
+    verificationExpires.setHours(verificationExpires.getHours() + 24);
     
-    //Guardar en la base de datos
+    // Preparar datos de contacto de emergencia (si existen)
+    const emergencyContact = req.body.emergencyContact ? {
+      name: req.body.emergencyContact.name,
+      phone: req.body.emergencyContact.phone,
+      relationship: req.body.emergencyContact.relationship
+    } : null;
+    
+    // Guardar en la base de datos
     const newUser = await prisma.users.create({ 
       data: { 
         email,
         fullname,
         role,
         password: hashedPassword,
+        id_number,
+        id_type,
+        date_of_birth: birthDate,
+        age,
+        gender: gender || null,
+        phone: phone || null,
+        address: address || null,
+        city: city || null,
+        blood_type: blood_type || null,
+        emergencyContact: emergencyContact,
         isActive: true,
         status: "PENDING",
         verificationCode,
         verificationCodeExpires: verificationExpires
-    },
-      select: { id: true, email: true, fullname: true, role: true, isActive: true, status: true }
+      },
+      select: { 
+        id: true, 
+        email: true, 
+        fullname: true, 
+        role: true, 
+        isActive: true, 
+        status: true,
+        id_number: true,
+        id_type: true,
+        date_of_birth: true,
+        age: true
+      }
     });
 
     // Registrar creación de usuario
     await logCreate('User', newUser, req.user, req, `Admin ${req.user.fullname} creó nuevo usuario con rol: ${role}`);
 
     // Enviar email con el código de verificación
-    const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
+    const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 24);
 
     if (!emailResult.success) {
       // Si falla el envío del email, eliminamos el usuario creado
@@ -108,15 +191,20 @@ const createByAdmin = async (req, res) => {
     }
 
     return res.status(201).json({
-        message: "Usuario creado exitosamente. Se ha enviado un email de verificación.",
-        user: {
-            id:newUser.id,
-            email: newUser.email,
-            fullname: newUser.fullname,
-            role: newUser.role,
-            isActive: newUser.isActive,
-            status: newUser.status
-        } });
+      message: "Usuario creado exitosamente. Se ha enviado un email de verificación.",
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        fullname: newUser.fullname,
+        role: newUser.role,
+        isActive: newUser.isActive,
+        status: newUser.status,
+        id_number: newUser.id_number,
+        id_type: newUser.id_type,
+        date_of_birth: newUser.date_of_birth,
+        age: newUser.age
+      }
+    });
   } catch (error) { 
     console.error("createByAdmin error:", error);
     return res.status(500).json({ message: "Error creando usuario" });
@@ -530,7 +618,20 @@ const getAllPatients = async (_req, res) => {
 const updatePatient = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullname, email, isActive } = req.body;
+    const { 
+      fullname, 
+      email, 
+      isActive, 
+      date_of_birth,
+      id_number,
+      id_type,
+      gender,
+      phone,
+      address,
+      city,
+      blood_type,
+      emergencyContact
+    } = req.body;
 
     // Solo ADMIN puede actualizar pacientes
     if (req.user.role !== "ADMINISTRADOR") {
@@ -546,28 +647,135 @@ const updatePatient = async (req, res) => {
       return res.status(400).json({ message: "El usuario no es un paciente" });
     }
 
+    // Validaciones si se actualiza el email
+    let validatedEmail = existingPatient.email;
+    if (email && email !== existingPatient.email) {
+      const emailToCheck = email.toLowerCase().trim();
+      
+      if (!isEmailValid(emailToCheck)) {
+        return res.status(400).json({ message: "El correo electrónico no es válido" });
+      }
+      
+      const emailExists = await prisma.users.findUnique({
+        where: { email: emailToCheck }
+      });
+      
+      if (emailExists) {
+        return res.status(400).json({ message: "El correo ya está registrado por otro usuario" });
+      }
+      
+      validatedEmail = emailToCheck;
+    }
+
+    // Validaciones si se actualiza el número de identificación
+    let validatedIdNumber = existingPatient.id_number;
+    if (id_number && id_number !== existingPatient.id_number) {
+      const idNumberExists = await prisma.users.findUnique({
+        where: { id_number }
+      });
+      
+      if (idNumberExists) {
+        return res.status(400).json({ message: "El número de identificación ya está registrado por otro usuario" });
+      }
+      
+      validatedIdNumber = id_number;
+    }
+
+    // Calcular edad si se actualiza la fecha de nacimiento
+    let birthDate = existingPatient.date_of_birth;
+    let age = existingPatient.age;
+    
+    if (date_of_birth) {
+      birthDate = new Date(date_of_birth);
+      
+      if (isNaN(birthDate.getTime())) {
+        return res.status(400).json({ message: "La fecha de nacimiento no es válida" });
+      }
+      
+      // Usar la función utilitaria para calcular la edad
+      age = calculateAge(birthDate);
+      
+      if (!isValidAge(age)) {
+        return res.status(400).json({ message: "La edad debe estar entre 0 y 100 años" });
+      }
+    }
+
+    // Preparar datos de actualización
+    const updateData = {
+      fullname: fullname ?? existingPatient.fullname,
+      email: validatedEmail,
+      id_number: validatedIdNumber,
+      id_type: id_type ?? existingPatient.id_type,
+      date_of_birth: birthDate,
+      age: age,
+      isActive: typeof isActive === "boolean" ? isActive : existingPatient.isActive,
+      updatedAt: new Date()
+    };
+    
+    // Campos opcionales
+    if (gender !== undefined) updateData.gender = gender;
+    if (phone !== undefined) updateData.phone = phone;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (blood_type !== undefined) updateData.blood_type = blood_type;
+    
+    // Datos JSON
+    if (emergencyContact !== undefined) {
+      updateData.emergencyContact = {
+        name: emergencyContact.name || null,
+        phone: emergencyContact.phone || null,
+        relationship: emergencyContact.relationship || null
+      };
+    }
+    
+    if (medicalInfo !== undefined) {
+      updateData.medicalInfo = {
+        allergies: medicalInfo.allergies || [],
+        conditions: medicalInfo.conditions || [],
+        medications: medicalInfo.medications || [],
+        bloodType: medicalInfo.bloodType || null
+      };
+    }
+
     // Actualizar paciente
-   // Actualizar paciente
-const updatedPatient = await prisma.users.update({
-  where: { id },
-  data: {
-    fullname: fullname ?? existingPatient.fullname,
-    email: email ? email.toLowerCase().trim() : existingPatient.email,
-    isActive: typeof isActive === "boolean" ? isActive : existingPatient.isActive,
-    updatedAt: new Date()
-  },
-  select: {
-    id: true,
-    email: true,
-    fullname: true,
-    role: true,
-    isActive: true,
-    updatedAt: true
-  }
-});
+    const updatedPatient = await prisma.users.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        fullname: true,
+        role: true,
+        isActive: true,
+        id_number: true,
+        id_type: true,
+        date_of_birth: true,
+        age: true,
+        gender: true,
+        phone: true,
+        address: true,
+        city: true,
+        blood_type: true,
+        emergencyContact: true,
+        medicalInfo: true,
+        updatedAt: true
+      }
+    });
 
+    // Log de actualización
+    await logUpdate(
+      'User', 
+      sanitizeObject(existingPatient),
+      sanitizeObject(updatedPatient),
+      req.user, 
+      req, 
+      `Paciente ${existingPatient.fullname} (${existingPatient.email}) actualizado por ${req.user.email}`
+    );
 
-    return res.json(updatedPatient);
+    return res.json({
+      message: "Paciente actualizado correctamente",
+      patient: updatedPatient
+    });
   } catch (error) {
     console.error("updatePatient error:", error);
     return res.status(500).json({ message: "Error actualizando paciente" });

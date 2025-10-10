@@ -4,6 +4,8 @@ const database = require("../src/database/database");
 const bodyparser = require("body-parser");
 const routes = require("../src/router/routes");
 const cors = require("cors");
+const helmet = require("helmet");
+const { sanitizeInputs } = require("../src/middlewares/sanitizeMiddleware");
 
 require("dotenv").config();
 
@@ -29,7 +31,10 @@ app.get("/api/v1/health", (_req, res) =>
   res.json({ ok: true, ts: new Date().toISOString(), msg: "API v1 is running" })
 );
 
+// Middleware de seguridad
+app.use(helmet()); // Añade headers de seguridad
 app.use(bodyparser.json());
+app.use(sanitizeInputs); // Sanitiza las entradas contra XSS
 app.use('/api/v1', routes);
 
 // Connect to database

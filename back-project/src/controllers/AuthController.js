@@ -17,69 +17,130 @@ const {
 
 const verificationCodes = {};
 
+// Importamos las utilidades para el usuario
+const { calculateAge, normalizeRole, isEmailValid, isPasswordStrong } = require('../utils/userUtils');
+
 const signup = async (req, res) => {
     try {
-        let { email, password, fullname } = req.body;
+        let { email, password, fullname, id_number, id_type, date_of_birth, role = "PACIENTE", gender, phone, address, city, blood_type } = req.body;
 
-        if (!email || !password || !fullname) {
-            return res.status(400).json({ message: "Faltan datos obligatorios" });
+        // Validar campos obligatorios
+        if (!email || !password || !fullname || !id_number || !id_type || !date_of_birth) {
+            return res.status(400).json({ 
+                message: "Faltan datos obligatorios", 
+                required: ["email", "password", "fullname", "id_number", "id_type", "date_of_birth"] 
+            });
         }
 
+        // Normalizar campos
         email = email.toLowerCase().trim();
+        id_type = id_type.toUpperCase().trim();
+        const normalizedRole = normalizeRole(role);
+        if (!normalizedRole) {
+            return res.status(400).json({ 
+                message: "Rol no válido", 
+                validRoles: ["ADMINISTRADOR", "MEDICO", "ENFERMERO", "PACIENTE"] 
+            });
+        }
+        role = normalizedRole;
 
-        // Validaciones de email y password
-        const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/;
-        if (!emailRegex.test(email)) {
+        // Validar formato de email usando la función de userUtils
+        if (!isEmailValid(email)) {
             return res.status(400).json({ message: "El correo electrónico no es válido" });
         }
 
-        const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
-        if (!passwordRegex.test(password)) {
+        // Validar contraseña usando la función de userUtils
+        if (!isPasswordStrong(password)) {
             return res.status(400).json({
                 message: "La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número"
             });
         }
 
-        // Verificar si ya existe
-        const existingUser = await prisma.users.findUnique({
-            where: { email }
+        // Validar tipo de documento
+        const validIdTypes = ["CC", "TI", "CE", "PP", "NIT"];
+        if (!validIdTypes.includes(id_type)) {
+            return res.status(400).json({ 
+                message: "Tipo de documento no válido", 
+                validTypes: validIdTypes 
+            });
+        }
+
+        // Validar fecha de nacimiento
+        const birthDate = new Date(date_of_birth);
+        if (isNaN(birthDate.getTime())) {
+            return res.status(400).json({ message: "Formato de fecha de nacimiento inválido" });
+        }
+
+        // Calcular edad
+        const age = calculateAge(birthDate);
+        if (age < 0) {
+            return res.status(400).json({ message: "Fecha de nacimiento inválida" });
+        }
+
+        // Verificar si ya existe el email o el número de identificación
+        const existingUser = await prisma.users.findFirst({
+            where: {
+                OR: [
+                    { email },
+                    { id_number }
+                ]
+            },
+            select: { email: true, id_number: true }
         });
+
         if (existingUser) {
-            return res.status(400).json({ message: "El correo ya está registrado" });
+            const field = existingUser.email === email ? "correo electrónico" : "número de identificación";
+            return res.status(400).json({ message: `El ${field} ya está registrado` });
         }
 
         // Encriptar contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Incluye el código de verificación → 15 minutos
+        // Generar código de verificación (24 horas)
         const verificationCode = generateVerificationCode();
         const verificationExpires = new Date();
-        verificationExpires.setMinutes(verificationExpires.getMinutes() + 15);
+        verificationExpires.setHours(verificationExpires.getHours() + 24);
+
+        // Preparar datos para creación de usuario
+        const userData = {
+            email,
+            password: hashedPassword,
+            fullname,
+            id_number,
+            id_type,
+            date_of_birth: birthDate,
+            age,
+            role,
+            status: "PENDING",
+            verificationCode,
+            verificationCodeExpires: verificationExpires
+        };
+
+        // Agregar campos opcionales si están presentes
+        if (gender) userData.gender = gender.toUpperCase();
+        if (phone) userData.phone = phone;
+        if (address) userData.address = address;
+        if (city) userData.city = city;
+        if (blood_type) userData.blood_type = blood_type.toUpperCase();
 
         // Guardar en la base de datos
         const newUser = await prisma.users.create({
-            data: {
-                email,
-                password: hashedPassword,
-                fullname,
-                role: "ADMINISTRADOR",
-                status: "PENDING",
-                verificationCode,
-                verificationCodeExpires: verificationExpires
-            }
+            data: userData
         });
         
         // Registrar la creación del usuario
-        await logCreate('User', sanitizeObject(newUser), { id: 'system', email: 'system', fullname: 'Sistema' }, req, `Registro de usuario: ${email} con rol ADMINISTRADOR`);
+        await logCreate('User', sanitizeObject(newUser), { id: 'system', email: 'system', fullname: 'Sistema' }, req, `Registro de usuario: ${email} con rol ${role}`);
 
-        const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 10);
+        // Enviar correo de verificación (24 horas de expiración)
+        const emailResult = await sendVerificationEmail(email, fullname, verificationCode, 24);
         if (!emailResult.success) {
-          await prisma.users.delete({ where: { id: newUser.id } });
-          return res.status(500).json({ message: "Error al enviar el correo de verificación" });
+            // Si falla el envío de correo, eliminar el usuario creado
+            await prisma.users.delete({ where: { id: newUser.id } });
+            return res.status(500).json({ message: "Error al enviar el correo de verificación" });
         }
 
         return res.status(201).json({
-            message: "Usuario registrado correctamente",
+            message: "Usuario registrado correctamente. Por favor verifica tu correo electrónico.",
             user: {
                 id: newUser.id,
                 email: newUser.email,
@@ -88,7 +149,7 @@ const signup = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error(error);
+        console.error("Error en signup:", error);
         return res.status(500).json({ message: "Error en el servidor" });
     }
 };

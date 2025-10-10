@@ -9,6 +9,7 @@ yarn.lock
 .env.development
 .env.test
 .env.production
+.vercel/
 
 # Archivos generados por Prisma
 prisma/migrations/

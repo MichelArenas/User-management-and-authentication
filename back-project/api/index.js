@@ -22,7 +22,11 @@ app.use(cors({
 }));
 
 app.get("/health", (_req, res) =>
-  res.json({ ok: true, ts: new Date().toISOString() })
+  res.json({ ok: true, ts: new Date().toISOString(), msg: "Server is running" })
+);
+
+app.get("/api/v1/health", (_req, res) =>
+  res.json({ ok: true, ts: new Date().toISOString(), msg: "API v1 is running" })
 );
 
 app.use(bodyparser.json());
@@ -32,4 +36,4 @@ app.use('/api/v1', routes);
 database();
 
 // Export for Vercel serverless deployment
-module.exports = app;
+module.exports = (req, res) => app(req, res);
